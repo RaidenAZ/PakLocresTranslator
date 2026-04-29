@@ -46,3 +46,6 @@ packages/
 
 # Test projects
 UEPakTool.Test/
+
+# Generated icon
+icon.ico
