@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using UEPakTool.Gui.ViewModels;
@@ -18,7 +17,6 @@ public partial class MainWindow
             {
                 vm.Settings.Load();
             }
-            // 初始选中第一个导航项
             if (NavView.MenuItems.Count > 0 && NavView.MenuItems[0] is NavigationViewItem first)
                 first.IsActive = true;
         };
@@ -28,9 +26,7 @@ public partial class MainWindow
     {
         try
         {
-            var pngPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.png");
-            if (!File.Exists(pngPath)) return;
-            Icon = new BitmapImage(new Uri(pngPath));
+            Icon = new BitmapImage(new Uri("pack://application:,,,/Icon128.png"));
         }
         catch { /* ignore */ }
     }
