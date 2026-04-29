@@ -1,0 +1,48 @@
+# IDE / Editor
+.idea/
+.vs/
+.vscode/
+*.suo
+*.user
+*.DotSettings
+
+# Claude
+.claude/
+
+# Build outputs
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+*.cache
+*.deps.json
+*.runtimeconfig.json
+
+# Design docs (internal)
+*.md
+!README.md
+
+# Config files (may contain API keys)
+Config/
+*.log
+*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# NuGet packages
+packages/
+*.nupkg
+
+# Temp
+*.tmp
+*.temp
+*.swp
+*.bak
+*.userprefs
+
+# Test projects
+UEPakTool.Test/

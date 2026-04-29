@@ -1,0 +1,127 @@
+<UserControl x:Class="UEPakTool.Gui.Views.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:UEPakTool.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:SettingsViewModel}">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="24">
+            <StackPanel>
+                <!-- 标题 -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                    <ui:SymbolIcon Symbol="Settings20" FontSize="24" Margin="0,0,12,0" />
+                    <TextBlock Text="AI 翻译设置" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- API 配置 -->
+                <Border Margin="0,0,0,16"
+                        BorderBrush="{ui:ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8"
+                        Background="{ui:ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Margin="20">
+                        <TextBlock Text="API 配置" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,12" />
+                        <TextBlock Text="API 格式" Margin="0,0,0,4" />
+                        <ComboBox SelectedIndex="{Binding ApiFormatIndex, Mode=TwoWay}" Margin="0,0,0,12">
+                            <ComboBoxItem Content="OpenAI 兼容 (/chat/completions)" />
+                            <ComboBoxItem Content="Anthropic 兼容 (/messages)" />
+                        </ComboBox>
+
+                        <TextBlock Text="API URL" Margin="0,0,0,4" />
+                        <ui:TextBox Text="{Binding ApiUrl, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,12"
+                                    PlaceholderText="https://api.openai.com/v1" />
+
+                        <TextBlock Text="API Key" Margin="0,0,0,4" />
+                        <ui:TextBox Text="{Binding ApiKey, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,12"
+                                    PlaceholderText="sk-..." />
+
+                        <TextBlock Text="模型名称" Margin="0,0,0,4" />
+                        <ui:TextBox Text="{Binding ModelName, UpdateSourceTrigger=LostFocus}" Margin="0,0,0,12"
+                                    PlaceholderText="gpt-4o" />
+
+                        <CheckBox IsChecked="{Binding PromptBeforeOverwrite, Mode=TwoWay}" Margin="0,0,0,10">
+                            逐个确认覆盖已有的 AI 翻译结果
+                        </CheckBox>
+
+                        <StackPanel Orientation="Horizontal">
+                            <ui:Button Command="{Binding TestConnectionCommand}" Appearance="Primary"
+                                    Icon="{ui:SymbolIcon PlugDisconnected20}">
+                                测试连接
+                            </ui:Button>
+                            <Border Margin="12,0,0,0" Width="12" Height="12" CornerRadius="6"
+                                    Background="Gray" x:Name="ConnectionDot" />
+                            <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 术语表 -->
+                <Border BorderBrush="{ui:ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8"
+                        Background="{ui:ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Margin="20">
+                        <DockPanel Margin="0,0,0,12">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <ui:Button x:Name="ImportGlossaryBtn" Click="ImportGlossary_Click"
+                                        Appearance="Secondary" Icon="{ui:SymbolIcon ArrowUpload20}"
+                                        Margin="0,0,6,0" ToolTip="导入 JSON" />
+                                <ui:Button x:Name="ExportGlossaryBtn" Click="ExportGlossary_Click"
+                                        Appearance="Secondary" Icon="{ui:SymbolIcon ArrowDownload20}"
+                                        ToolTip="导出 JSON" />
+                            </StackPanel>
+                            <TextBlock Text="专用名词 (术语表)" FontWeight="SemiBold" FontSize="14" />
+                        </DockPanel>
+                        <DataGrid ItemsSource="{Binding GlossaryEntries}"
+                                  AutoGenerateColumns="False" CanUserAddRows="False"
+                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                  MaxHeight="300" Background="Transparent"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="原文" Width="2*"
+                                                    Binding="{Binding Source, UpdateSourceTrigger=LostFocus}" />
+                                <DataGridTextColumn Header="译文" Width="2*"
+                                                    Binding="{Binding Target, UpdateSourceTrigger=LostFocus}" />
+                                <DataGridTemplateColumn Width="50">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ui:Button Click="RemoveGlossaryEntry_Click"
+                                                    Background="Transparent"
+                                                    Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}"
+                                                    Icon="{ui:SymbolIcon Dismiss12}"
+                                                    Width="32" Height="32" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- 添加快捷术语 -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ui:TextBox Text="{Binding NewGlossarySource, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="原文 (如 Elf)" />
+                            <ui:TextBox Grid.Column="1" Margin="8,0,0,0"
+                                        Text="{Binding NewGlossaryTarget, UpdateSourceTrigger=PropertyChanged}"
+                                        PlaceholderText="译文 (如 精灵)" />
+                            <ui:Button Grid.Column="2" Margin="8,0,0,0"
+                                    Command="{Binding AddGlossaryEntryCommand}"
+                                    Appearance="Primary" Content="添加" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 保存按钮 -->
+                <ui:Button x:Name="SaveBtn" Click="Save_Click" Margin="0,16,0,0"
+                        Appearance="Primary" HorizontalAlignment="Right" Width="120" Height="36">
+                    保存设置
+                </ui:Button>
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,497 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.IO;
+using System.Net.Http;
+using System.Windows;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
+using UEPakTool.Core.Ai;
+using UEPakTool.Core.LocRes;
+using UEPakTool.Core.Pak;
+using UEPakTool.Gui.Models;
+using UEPakTool.Gui.Services;
+
+namespace UEPakTool.Gui.ViewModels;
+
+public partial class TranslationViewModel : ObservableObject
+{
+    [ObservableProperty]
+    private string _searchText = "";
+
+    [ObservableProperty]
+    private string _statusText = "就绪";
+
+    [ObservableProperty]
+    private int _totalCount;
+
+    [ObservableProperty]
+    private int _translatedCount;
+
+    [ObservableProperty]
+    private int _matchCount;
+
+    [ObservableProperty]
+    private int _currentMatchIndex;
+
+    [ObservableProperty]
+    private bool _isTranslating;
+
+    [ObservableProperty]
+    private int _highlightedIndex = -1;
+
+    [ObservableProperty]
+    private int _translationProgress;
+
+    public ObservableCollection<TranslationRecord> Records { get; } = [];
+
+    public event Action<TranslationRecord>? RecordSourceChanged;
+
+    private PakFile? _pakFile;
+    private List<PakEntry> _selectedEntries = [];
+    private List<int> _matchIndices = [];
+    private CancellationTokenSource? _translateCts;
+
+    partial void OnSearchTextChanged(string value)
+    {
+        Search(value);
+    }
+
+    public void LoadFromPak(PakFile pakFile, List<PakEntry> entries, string targetLocale = "en")
+    {
+        _pakFile = pakFile;
+        _selectedEntries = entries;
+        Records.Clear();
+
+        var targetEntry = entries.FirstOrDefault(e => e.Filename.Contains($"/{targetLocale}/"))
+                        ?? entries.FirstOrDefault();
+
+        if (targetEntry == null) return;
+
+        byte[] data = pakFile.Extract(targetEntry);
+        var locres = LocResFile.Load(data);
+
+        foreach (var entry in locres.Entries)
+        {
+            var record = new TranslationRecord
+            {
+                Namespace = entry.Namespace,
+                Key = entry.Key,
+                Original = entry.LocalizedString,
+                Translated = "",
+                SourceStringHash = entry.SourceStringHash
+            };
+            record.PropertyChanged += OnRecordChanged;
+            Records.Add(record);
+        }
+
+        UpdateStats();
+    }
+
+    private void OnRecordChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TranslationRecord.Translated)
+            or nameof(TranslationRecord.Source))
+        {
+            UpdateStats();
+
+            if (e.PropertyName == nameof(TranslationRecord.Source) && sender is TranslationRecord record)
+                RecordSourceChanged?.Invoke(record);
+        }
+    }
+
+    [RelayCommand]
+    private void ExportCsv()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出翻译表",
+            Filter = "CSV 文件 (*.csv)|*.csv"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        using var writer = new StreamWriter(dialog.FileName, false, System.Text.Encoding.UTF8);
+        writer.WriteLine("Key,Original,Translated");
+        foreach (var r in Records)
+            writer.WriteLine($"\"{r.DisplayKey}\",\"{r.Original}\",\"{r.Translated}\"");
+        StatusText = $"已导出 {Records.Count} 条到 {Path.GetFileName(dialog.FileName)}";
+    }
+
+    [RelayCommand]
+    private void ImportCsv()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入翻译表",
+            Filter = "CSV 文件 (*.csv)|*.csv"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        using var reader = new StreamReader(dialog.FileName, System.Text.Encoding.UTF8);
+        reader.ReadLine(); // skip header
+        int count = 0;
+        while (reader.ReadLine() is { } line)
+        {
+            var parts = ParseCsvLine(line);
+            if (parts.Length < 3) continue;
+            string key = parts[0], translated = parts[2];
+            var record = Records.FirstOrDefault(r => r.DisplayKey == key);
+            if (record != null && !string.IsNullOrWhiteSpace(translated))
+            {
+                record.Translated = translated;
+                record.Source = TranslationSource.ManuallyEntered;
+                count++;
+            }
+        }
+        UpdateStats();
+        StatusText = $"已导入 {count} 条翻译";
+    }
+
+    public void Search(string text)
+    {
+        _matchIndices.Clear();
+        CurrentMatchIndex = 0;
+        HighlightedIndex = -1;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            MatchCount = 0;
+            return;
+        }
+
+        for (int i = 0; i < Records.Count; i++)
+        {
+            if (Records[i].DisplayKey.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                Records[i].Original.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                (Records[i].Translated?.Contains(text, StringComparison.OrdinalIgnoreCase) ?? false))
+            {
+                _matchIndices.Add(i);
+            }
+        }
+
+        MatchCount = _matchIndices.Count;
+        if (_matchIndices.Count > 0)
+        {
+            CurrentMatchIndex = 1;
+            HighlightedIndex = _matchIndices[0];
+        }
+    }
+
+    public int? GetNextMatchIndex()
+    {
+        if (_matchIndices.Count == 0) return null;
+        CurrentMatchIndex = CurrentMatchIndex >= _matchIndices.Count ? 1 : CurrentMatchIndex + 1;
+        HighlightedIndex = _matchIndices[CurrentMatchIndex - 1];
+        return HighlightedIndex;
+    }
+
+    public int? GetPrevMatchIndex()
+    {
+        if (_matchIndices.Count == 0) return null;
+        CurrentMatchIndex = CurrentMatchIndex <= 1 ? _matchIndices.Count : CurrentMatchIndex - 1;
+        HighlightedIndex = _matchIndices[CurrentMatchIndex - 1];
+        return HighlightedIndex;
+    }
+
+    public void SaveToLocres(PakFile? pakFile, string locale, string outputDir)
+    {
+        var targetEntry = _selectedEntries.FirstOrDefault(e => e.Filename.Contains($"/{locale}/"));
+        if (targetEntry == null) return;
+
+        byte[] originalData = pakFile!.Extract(targetEntry);
+        var locres = LocResFile.Load(originalData);
+
+        foreach (var entry in locres.Entries)
+        {
+            var record = Records.FirstOrDefault(r =>
+                r.Namespace == entry.Namespace && r.Key == entry.Key);
+            if (record != null && !string.IsNullOrWhiteSpace(record.Translated))
+            {
+                entry.LocalizedString = record.Translated;
+            }
+        }
+
+        byte[] newData = locres.Save();
+
+        string relativePath = targetEntry.Filename;
+        if (relativePath.StartsWith("../../../"))
+            relativePath = relativePath["../../../".Length..];
+
+        string outPath = Path.Combine(outputDir, relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        File.WriteAllBytes(outPath, newData);
+
+        StatusText = $"已保存 {Path.GetFileName(outPath)}";
+    }
+
+    [RelayCommand]
+    private async Task TranslateAll()
+    {
+        if (IsTranslating) return;
+
+        IsTranslating = true;
+        TranslationProgress = 0;
+        StatusText = "准备翻译...";
+
+        try
+        {
+            _translateCts = new CancellationTokenSource();
+            var config = SettingsService.LoadAiConfig();
+
+            if (string.IsNullOrWhiteSpace(config.ApiUrl))
+            {
+                MessageBox.Show("请先在设置页面配置 API URL。", "提示",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var glossary = SettingsService.LoadGlossary()
+                .Select(g => (g.Source, g.Target)).ToList();
+
+            var aiConfig = new Core.Ai.AiConfig
+            {
+                ApiUrl = config.ApiUrl,
+                ApiKey = config.ApiKey,
+                ModelName = config.ModelName,
+                Format = config.Format == Gui.Models.ApiFormat.OpenAI
+                    ? Core.Ai.ApiFormat.OpenAI : Core.Ai.ApiFormat.Anthropic
+            };
+
+            // 筛选要翻译的条目
+            var toTranslate = new List<(string Key, string Original)>();
+            foreach (var r in Records)
+            {
+                if (r.Source is TranslationSource.ManuallyEntered or TranslationSource.ManuallyEdited)
+                    continue;
+                if (r.Source == TranslationSource.AiGenerated && config.PromptBeforeOverwrite)
+                    continue;
+                toTranslate.Add((r.DisplayKey, r.Original));
+            }
+
+            if (toTranslate.Count == 0)
+            {
+                StatusText = "没有需要翻译的条目";
+                return;
+            }
+
+            var dispatcher = Application.Current.Dispatcher;
+            var token = _translateCts.Token;
+            const int batchSize = 15;
+
+            var done = await Task.Run(async () =>
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+                var client = new Core.Ai.OpenAiClient(http);
+                int count = 0;
+
+                for (int batchStart = 0; batchStart < toTranslate.Count; batchStart += batchSize)
+                {
+                    token.ThrowIfCancellationRequested();
+
+                    var batch = toTranslate.Skip(batchStart).Take(batchSize).ToList();
+                    var batchNum = batchStart / batchSize + 1;
+                    var totalBatches = (toTranslate.Count + batchSize - 1) / batchSize;
+
+                    dispatcher.Invoke(() =>
+                    {
+                        StatusText = $"翻译中... 第{batchNum}/{totalBatches}批 ({batchStart + 1}-{batchStart + batch.Count}/{toTranslate.Count})";
+                        TranslationProgress = (int)(batchStart * 100.0 / toTranslate.Count);
+                    });
+
+                    Dictionary<string, string> batchResults;
+                    try
+                    {
+                        batchResults = await client.TranslateBatchAsync(
+                            batch, aiConfig, glossary, token);
+                    }
+                    catch (FormatException fe)
+                    {
+                        // JSON 解析失败，降级为逐条
+                        System.Diagnostics.Debug.WriteLine($"Batch parse failed: {fe.Message}");
+                        batchResults = new Dictionary<string, string>();
+                        foreach (var (k, o) in batch)
+                        {
+                            token.ThrowIfCancellationRequested();
+                            try
+                            {
+                                var t = await client.TranslateSingleAsync(o, aiConfig, token);
+                                t = GlossaryPostProcessor.ApplySingle(t, glossary);
+                                if (!string.IsNullOrWhiteSpace(t)) batchResults[k] = t;
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Single fallback failed: {ex.Message}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Batch HTTP error: {ex.Message}");
+                        batchResults = new Dictionary<string, string>();
+                    }
+
+                    // 后处理 + 写回
+                    foreach (var kv in batchResults)
+                    {
+                        var translated = GlossaryPostProcessor.ApplySingle(kv.Value, glossary);
+                        if (string.IsNullOrWhiteSpace(translated)) continue;
+
+                        dispatcher.Invoke(() =>
+                        {
+                            var record = Records.FirstOrDefault(r => r.DisplayKey == kv.Key);
+                            if (record != null)
+                            {
+                                record.Translated = translated;
+                                record.Source = TranslationSource.AiGenerated;
+                            }
+                        });
+                        count++;
+                    }
+
+                    var progressDone = Math.Min(batchStart + batchSize, toTranslate.Count);
+                    dispatcher.Invoke(() =>
+                    {
+                        TranslationProgress = (int)(progressDone * 100.0 / toTranslate.Count);
+                    });
+                }
+
+                return count;
+            }, token);
+
+            dispatcher.Invoke(() =>
+            {
+                StatusText = $"翻译完成：{done} 条";
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "翻译已取消";
+        }
+        catch (HttpRequestException ex)
+        {
+            StatusText = $"网络错误: {ex.Message}";
+            MessageBox.Show($"API 请求失败：{ex.Message}", "翻译错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"翻译异常: {ex.Message}";
+            MessageBox.Show($"翻译过程出错：{ex.Message}", "翻译错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsTranslating = false;
+            _translateCts?.Dispose();
+            _translateCts = null;
+        }
+    }
+
+    [RelayCommand]
+    private void CancelTranslate()
+    {
+        _translateCts?.Cancel();
+    }
+
+    [RelayCommand]
+    private void SaveLocresFiles()
+    {
+        if (_pakFile == null || _selectedEntries.Count == 0) return;
+
+        // 让用户选择输出目录
+        var dialog = new SaveFileDialog
+        {
+            Title = "选择输出目录（随便输入文件名，选中后点保存）",
+            Filter = "所有文件|*.*",
+            FileName = "choose_this_folder"
+        };
+        if (dialog.ShowDialog() != true) return;
+        string outputDir = Path.GetDirectoryName(dialog.FileName)!;
+
+        try
+        {
+            int count = 0;
+
+            foreach (var srcEntry in _selectedEntries)
+            {
+                // 提取目标 locale
+                var parts = srcEntry.Filename.Split('/');
+                var localeIdx = Array.FindIndex(parts, p =>
+                    p.Length >= 2 && p.Length <= 5 && p.All(c => char.IsLetter(c) || c == '-'));
+
+                if (localeIdx < 0) continue;
+
+                string targetPath = string.Join('/', parts);
+
+                var pakEntry = _pakFile.FindFiles(targetPath).FirstOrDefault()
+                    ?? _pakFile.FindFiles("*").FirstOrDefault(e =>
+                        e.Filename.EndsWith(targetPath.Split('/').Last()));
+
+                if (pakEntry == null) continue;
+
+                byte[] originalData = _pakFile.Extract(pakEntry);
+                var locres = LocResFile.Load(originalData);
+
+                bool modified = false;
+                foreach (var entry in locres.Entries)
+                {
+                    var record = Records.FirstOrDefault(r =>
+                        r.Namespace == entry.Namespace && r.Key == entry.Key);
+                    if (record != null && !string.IsNullOrWhiteSpace(record.Translated))
+                    {
+                        entry.LocalizedString = record.Translated;
+                        modified = true;
+                    }
+                }
+
+                if (!modified) continue;
+
+                byte[] newData = locres.Save();
+
+                // 直接使用原始文件名（去掉 ../../../ 前缀）
+                string relPath = targetPath;
+                if (relPath.StartsWith("../../../"))
+                    relPath = relPath["../../../".Length..];
+
+                string outPath = Path.Combine(outputDir, relPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+                File.WriteAllBytes(outPath, newData);
+                count++;
+            }
+
+            StatusText = $"已保存 {count} 个 locres 到 {outputDir}";
+            MessageBox.Show($"成功保存 {count} 个 locres 文件。\n输出目录: {outputDir}", "完成",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存失败: {ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void UpdateStats()
+    {
+        TotalCount = Records.Count;
+        TranslatedCount = Records.Count(r => r.IsTranslated);
+        StatusText = $"共 {TotalCount} 条 | 已翻译 {TranslatedCount} | 待翻译 {TotalCount - TranslatedCount}";
+    }
+
+    private static string[] ParseCsvLine(string line)
+    {
+        var result = new List<string>();
+        bool inQuotes = false;
+        int start = 0;
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == '"') inQuotes = !inQuotes;
+            else if (line[i] == ',' && !inQuotes)
+            {
+                result.Add(line[start..i].Trim('"'));
+                start = i + 1;
+            }
+        }
+        result.Add(line[start..].Trim('"'));
+        return result.ToArray();
+    }
+}

@@ -1,0 +1,71 @@
+<UserControl x:Class="UEPakTool.Gui.Views.PakBrowserPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+             xmlns:vm="clr-namespace:UEPakTool.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance vm:PakBrowserViewModel}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题行 -->
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+            <ui:SymbolIcon Symbol="Box20" FontSize="24" Margin="0,0,12,0" />
+            <TextBlock Text="PAK 文件浏览" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <!-- 工具栏 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+            <ui:Button x:Name="OpenPakBtn"
+                    Command="{Binding OpenPakCommand}"
+                    Appearance="Primary"
+                    Icon="{ui:SymbolIcon Open20}"
+                    Height="36" Padding="16,0">
+                打开 PAK 文件
+            </ui:Button>
+            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="12,0,0,0" Opacity="0.7" />
+        </StackPanel>
+
+        <!-- Locres 文件列表 -->
+        <Border Grid.Row="2" BorderBrush="{ui:ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1" CornerRadius="8"
+                Background="{ui:ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <TreeView ItemsSource="{Binding LocresNodes}" Margin="8">
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                    </Style>
+                </TreeView.ItemContainerStyle>
+                <TreeView.ItemTemplate>
+                    <HierarchicalDataTemplate DataType="{x:Type vm:PakEntryNode}" ItemsSource="{Binding Children}">
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+        </Border>
+
+        <!-- 底部操作 -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,12,0,0">
+            <ui:Button Command="{Binding LoadToTranslationCommand}"
+                    Appearance="Primary" IsEnabled="{Binding IsLoaded}"
+                    Icon="{ui:SymbolIcon ArrowRight20}">
+                加载选中项到翻译表格
+            </ui:Button>
+            <TextBlock Opacity="0.6" VerticalAlignment="Center" Margin="12,0,0,0">
+                <Run Text="共 " /><Run Text="{Binding TotalFiles}" /><Run Text=" 文件, " />
+                <Run Text="{Binding LocresCount}" /><Run Text=" locres 文件" />
+            </TextBlock>
+        </StackPanel>
+    </Grid>
+</UserControl>

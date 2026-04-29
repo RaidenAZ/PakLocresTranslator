@@ -1,0 +1,57 @@
+<ui:FluentWindow x:Class="UEPakTool.Gui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:vm="clr-namespace:UEPakTool.Gui.ViewModels"
+        Title="UEPakTool — UE4.26 本地化工具"
+        Height="800" Width="1280"
+        MinHeight="600" MinWidth="960"
+        ExtendsContentIntoTitleBar="True"
+        WindowCornerPreference="Round"
+        WindowStartupLocation="CenterScreen">
+
+    <ui:FluentWindow.DataContext>
+        <vm:MainViewModel x:Name="MainVM" />
+    </ui:FluentWindow.DataContext>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Grid.ColumnSpan="2"
+                     Title="UE4.26 本地化工具" />
+
+        <ui:NavigationView x:Name="NavView"
+                           Grid.Row="1" Grid.Column="0"
+                           IsPaneOpen="True"
+                           OpenPaneLength="80"
+                           PaneDisplayMode="LeftFluent"
+                           IsBackButtonVisible="Collapsed"
+                           BorderThickness="0">
+            <ui:NavigationView.MenuItems>
+                <ui:NavigationViewItem Content="PAK 浏览"
+                                       Icon="{ui:SymbolIcon Box24}"
+                                       Tag="pak"
+                                       Click="NavItem_Click" />
+                <ui:NavigationViewItem Content="翻译编辑"
+                                       Icon="{ui:SymbolIcon Translate24}"
+                                       Tag="translation"
+                                       Click="NavItem_Click" />
+            </ui:NavigationView.MenuItems>
+            <ui:NavigationView.FooterMenuItems>
+                <ui:NavigationViewItem Content="设置"
+                                       Icon="{ui:SymbolIcon Settings24}"
+                                       Tag="settings"
+                                       Click="NavItem_Click" />
+            </ui:NavigationView.FooterMenuItems>
+        </ui:NavigationView>
+
+        <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding CurrentPage}" />
+    </Grid>
+</ui:FluentWindow>
