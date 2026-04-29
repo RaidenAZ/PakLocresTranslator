@@ -51,7 +51,8 @@
                                 测试连接
                             </ui:Button>
                             <Border Margin="12,0,0,0" Width="12" Height="12" CornerRadius="6"
-                                    Background="Gray" x:Name="ConnectionDot" />
+                                    Background="{Binding ConnectionDotColor}"
+                                    x:Name="ConnectionDot" />
                             <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center" Margin="6,0,0,0" />
                         </StackPanel>
                     </StackPanel>
