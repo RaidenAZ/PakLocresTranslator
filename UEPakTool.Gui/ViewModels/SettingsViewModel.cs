@@ -27,10 +27,11 @@ public partial class SettingsViewModel : ObservableObject
     private bool _promptBeforeOverwrite;
 
     [ObservableProperty]
-    private bool _isConnectionOk;
+    private string _connectionStatus = "";
 
     [ObservableProperty]
-    private string _connectionStatus = "";
+    private System.Windows.Media.Brush _connectionDotColor =
+        System.Windows.Media.Brushes.Gray;
 
     [ObservableProperty]
     private string _newGlossarySource = "";
@@ -88,14 +89,14 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task TestConnection()
     {
-        IsConnectionOk = false;
+        ConnectionDotColor = System.Windows.Media.Brushes.Gray;
         ConnectionStatus = "测试中...";
 
         try
         {
             HttpResponseMessage response;
 
-            if (ApiFormatIndex == 0) // OpenAI
+            if (ApiFormatIndex == 0)
             {
                 var body = new
                 {
@@ -108,7 +109,7 @@ public partial class SettingsViewModel : ObservableObject
                 _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {ApiKey}");
                 response = await _http.PostAsync($"{ApiUrl.TrimEnd('/')}/chat/completions", content);
             }
-            else // Anthropic
+            else
             {
                 var body = new
                 {
@@ -125,27 +126,36 @@ public partial class SettingsViewModel : ObservableObject
 
             if (response.IsSuccessStatusCode)
             {
-                IsConnectionOk = true;
+                ConnectionDotColor = System.Windows.Media.Brushes.Green;
                 ConnectionStatus = "连接成功";
             }
             else
             {
                 var errBody = await response.Content.ReadAsStringAsync();
-                ConnectionStatus = $"失败: HTTP {(int)response.StatusCode}";
-                await ShowErrorDialog("连接测试失败",
-                    $"错误类型: HTTP {(int)response.StatusCode}\n详细信息: {errBody[..Math.Min(200, errBody.Length)]}\n建议: 请检查 API URL、Key 和 Model Name 是否正确。");
+                ConnectionDotColor = System.Windows.Media.Brushes.OrangeRed;
+                ConnectionStatus = $"失败 HTTP {(int)response.StatusCode}";
+                ShowError($"HTTP {(int)response.StatusCode}", errBody);
             }
         }
         catch (TaskCanceledException)
         {
+            ConnectionDotColor = System.Windows.Media.Brushes.OrangeRed;
             ConnectionStatus = "超时";
-            await ShowErrorDialog("连接测试超时", "API 请求在 15 秒内未响应。\n建议: 请检查网络连接和 API URL 是否正确。");
+            ShowError("连接超时", "API 请求在 30 秒内未响应");
         }
         catch (Exception ex)
         {
-            ConnectionStatus = $"异常: {ex.Message}";
-            await ShowErrorDialog("连接测试异常", $"错误信息: {ex.Message}");
+            ConnectionDotColor = System.Windows.Media.Brushes.OrangeRed;
+            ConnectionStatus = "异常";
+            ShowError("连接异常", ex.Message);
         }
+    }
+
+    private static void ShowError(string title, string detail)
+    {
+        var msg = detail.Length > 500 ? detail[..500] + "..." : detail;
+        System.Windows.MessageBox.Show($"错误: {title}\n\n{msg}", "连接测试失败",
+            System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
     }
 
     [RelayCommand]
