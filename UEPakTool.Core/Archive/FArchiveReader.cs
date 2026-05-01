@@ -53,10 +53,14 @@ public class FArchiveReader : IDisposable
         }
         else
         {
-            // UCS-2/UTF-16，取绝对值
+            // UCS-2/UTF-16，取绝对值。charCount 包含 null terminator
             int charCount = -length;
             byte[] bytes = _reader.ReadBytes(charCount * 2);
-            return Encoding.Unicode.GetString(bytes, 0, bytes.Length);
+            string result = Encoding.Unicode.GetString(bytes, 0, bytes.Length);
+            // 移除尾随 null terminator（UE4 序列化时包含，C# string 不需要）
+            if (result.Length > 0 && result[result.Length - 1] == '\0')
+                result = result.Substring(0, result.Length - 1);
+            return result;
         }
     }
 

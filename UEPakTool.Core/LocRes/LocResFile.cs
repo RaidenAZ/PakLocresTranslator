@@ -191,12 +191,21 @@ public class LocResFile
         // Compact+：字符串表写到文件末尾
         if (Version >= LocResVersion.Compact)
         {
+            // 计算每个 localized string 的实际引用次数
+            var refCounts = new Dictionary<string, int>();
+            foreach (var e in Entries)
+            {
+                refCounts.TryGetValue(e.LocalizedString, out int c);
+                refCounts[e.LocalizedString] = c + 1;
+            }
+
             long stringArrayOffset = writer.Position;
             writer.WriteInt32(stringList.Count);
             foreach (var s in stringList)
             {
                 writer.WriteFString(s);
-                writer.WriteInt32(-1); // RefCount
+                refCounts.TryGetValue(s, out int rc);
+                writer.WriteInt32(rc);
             }
 
             // 回填 offset
@@ -209,12 +218,11 @@ public class LocResFile
         return writer.ToArray();
     }
 
-    private void WriteTextKey(FArchiveWriter writer, string value, LocResVersion version)
+    private static void WriteTextKey(FArchiveWriter writer, string value, LocResVersion version)
     {
         if (version >= LocResVersion.Optimized_CRC32)
         {
-            // 简单 hash：用 GetHashCode 或 CityHash 近似
-            writer.WriteUInt32((uint)value.GetHashCode());
+            writer.WriteUInt32(CityHash.Ue4StrHash(value));
         }
         writer.WriteFString(value);
     }
