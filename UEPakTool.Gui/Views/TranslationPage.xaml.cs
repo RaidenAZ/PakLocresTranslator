@@ -115,9 +115,12 @@ public partial class TranslationPage : UserControl
     {
         if (e.Key == Key.C && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("Key\t原文\t译文");
+            // 焦点在 TextBox 内 → 让 TextBox 原生处理 Ctrl+C（仅复制选中文字）
+            if (Keyboard.FocusedElement is TextBox)
+                return;
 
+            // 焦点在 DataGrid 行上 → 复制整行
+            var sb = new StringBuilder();
             foreach (var item in TranslationGrid.SelectedItems)
             {
                 if (item is TranslationRecord r)
