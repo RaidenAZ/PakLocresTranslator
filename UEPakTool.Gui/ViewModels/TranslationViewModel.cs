@@ -78,9 +78,9 @@ public partial class TranslationViewModel : ObservableObject
                 Namespace = entry.Namespace,
                 Key = entry.Key,
                 Original = entry.LocalizedString,
-                Translated = "",
                 SourceStringHash = entry.SourceStringHash
             };
+            record.SetInitialValue(entry.LocalizedString);
             record.PropertyChanged += OnRecordChanged;
             Records.Add(record);
         }
@@ -205,7 +205,7 @@ public partial class TranslationViewModel : ObservableObject
         {
             var record = Records.FirstOrDefault(r =>
                 r.Namespace == entry.Namespace && r.Key == entry.Key);
-            if (record != null && !string.IsNullOrWhiteSpace(record.Translated))
+            if (record != null && record.Translated != entry.LocalizedString)
             {
                 entry.LocalizedString = record.Translated;
             }
@@ -437,7 +437,7 @@ public partial class TranslationViewModel : ObservableObject
                 {
                     var record = Records.FirstOrDefault(r =>
                         r.Namespace == entry.Namespace && r.Key == entry.Key);
-                    if (record != null && !string.IsNullOrWhiteSpace(record.Translated))
+                    if (record != null && record.Translated != entry.LocalizedString)
                     {
                         entry.LocalizedString = record.Translated;
                         modified = true;

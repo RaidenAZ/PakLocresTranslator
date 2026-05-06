@@ -92,7 +92,7 @@ public partial class TranslationPage : UserControl
             TranslationSource.AiGenerated => new SolidColorBrush(Color.FromRgb(0xE3, 0xF2, 0xFD)),
             TranslationSource.ManuallyEntered => new SolidColorBrush(Color.FromRgb(0xE8, 0xF5, 0xE9)),
             TranslationSource.ManuallyEdited => new SolidColorBrush(Color.FromRgb(0xFF, 0xF3, 0xE0)),
-            _ => Brushes.White
+            _ => Brushes.White  // Empty / OriginalLocale
         };
     }
 
