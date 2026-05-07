@@ -13,6 +13,7 @@
     <Resource Include="Icon128.png" />
   </ItemGroup>
 
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
@@ -21,8 +22,8 @@
     <UseWPF>true</UseWPF>
     <ApplicationIcon>icon.ico</ApplicationIcon>
     <AssemblyName>TSWPakLocalizationTool</AssemblyName>
-    <Version>1.1</Version>
-    <FileVersion>1.1</FileVersion>
+    <Version>1.2</Version>
+    <FileVersion>1.2</FileVersion>
   </PropertyGroup>
 
 </Project>

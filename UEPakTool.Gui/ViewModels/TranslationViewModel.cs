@@ -7,8 +7,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using UEPakTool.Core.Ai;
+using UEPakTool.Core.Container;
 using UEPakTool.Core.LocRes;
-using UEPakTool.Core.Pak;
 using UEPakTool.Gui.Models;
 using UEPakTool.Gui.Services;
 
@@ -47,8 +47,8 @@ public partial class TranslationViewModel : ObservableObject
 
     public event Action<TranslationRecord>? RecordSourceChanged;
 
-    private PakFile? _pakFile;
-    private List<PakEntry> _selectedEntries = [];
+    private IContainerFile? _container;
+    private List<object> _entryTags = [];
     private List<int> _matchIndices = [];
     private CancellationTokenSource? _translateCts;
 
@@ -57,18 +57,28 @@ public partial class TranslationViewModel : ObservableObject
         Search(value);
     }
 
-    public void LoadFromPak(PakFile pakFile, List<PakEntry> entries, string targetLocale = "en")
+    public void LoadFromContainer(IContainerFile container, List<object> entryTags, string targetLocale = "zh")
     {
-        _pakFile = pakFile;
-        _selectedEntries = entries;
+        _container = container;
+        _entryTags = entryTags;
         Records.Clear();
 
-        var targetEntry = entries.FirstOrDefault(e => e.Filename.Contains($"/{targetLocale}/"))
-                        ?? entries.FirstOrDefault();
+        // 选第一个条目加载到翻译表格
+        object? targetTag = null;
+        foreach (var tag in entryTags)
+        {
+            var path = container.GetEntryPath(tag);
+            if (!string.IsNullOrEmpty(targetLocale) && path.Contains($"/{targetLocale}/"))
+            {
+                targetTag = tag;
+                break;
+            }
+        }
+        targetTag ??= entryTags.FirstOrDefault();
 
-        if (targetEntry == null) return;
+        if (targetTag == null) return;
 
-        byte[] data = pakFile.Extract(targetEntry);
+        byte[] data = container.ExtractEntry(targetTag);
         var locres = LocResFile.Load(data);
 
         foreach (var entry in locres.Entries)
@@ -191,37 +201,6 @@ public partial class TranslationViewModel : ObservableObject
         CurrentMatchIndex = CurrentMatchIndex <= 1 ? _matchIndices.Count : CurrentMatchIndex - 1;
         HighlightedIndex = _matchIndices[CurrentMatchIndex - 1];
         return HighlightedIndex;
-    }
-
-    public void SaveToLocres(PakFile? pakFile, string locale, string outputDir)
-    {
-        var targetEntry = _selectedEntries.FirstOrDefault(e => e.Filename.Contains($"/{locale}/"));
-        if (targetEntry == null) return;
-
-        byte[] originalData = pakFile!.Extract(targetEntry);
-        var locres = LocResFile.Load(originalData);
-
-        foreach (var entry in locres.Entries)
-        {
-            var record = Records.FirstOrDefault(r =>
-                r.Namespace == entry.Namespace && r.Key == entry.Key);
-            if (record != null && record.Translated != entry.LocalizedString)
-            {
-                entry.LocalizedString = record.Translated;
-            }
-        }
-
-        byte[] newData = locres.Save();
-
-        string relativePath = targetEntry.Filename;
-        if (relativePath.StartsWith("../../../"))
-            relativePath = relativePath["../../../".Length..];
-
-        string outPath = Path.Combine(outputDir, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-        File.WriteAllBytes(outPath, newData);
-
-        StatusText = $"已保存 {Path.GetFileName(outPath)}";
     }
 
     [RelayCommand]
@@ -396,9 +375,8 @@ public partial class TranslationViewModel : ObservableObject
     [RelayCommand]
     private void SaveLocresFiles()
     {
-        if (_pakFile == null || _selectedEntries.Count == 0) return;
+        if (_container == null || _entryTags.Count == 0) return;
 
-        // 让用户选择输出目录
         var dialog = new SaveFileDialog
         {
             Title = "选择输出目录（随便输入文件名，选中后点保存）",
@@ -412,34 +390,21 @@ public partial class TranslationViewModel : ObservableObject
         {
             int count = 0;
 
-            foreach (var srcEntry in _selectedEntries)
+            foreach (var tag in _entryTags)
             {
-                // 提取目标 locale
-                var parts = srcEntry.Filename.Split('/');
-                var localeIdx = Array.FindIndex(parts, p =>
-                    p.Length >= 2 && p.Length <= 5 && p.All(c => char.IsLetter(c) || c == '-'));
+                var entryPath = _container.GetEntryPath(tag);
 
-                if (localeIdx < 0) continue;
-
-                string targetPath = string.Join('/', parts);
-
-                var pakEntry = _pakFile.FindFiles(targetPath).FirstOrDefault()
-                    ?? _pakFile.FindFiles("*").FirstOrDefault(e =>
-                        e.Filename.EndsWith(targetPath.Split('/').Last()));
-
-                if (pakEntry == null) continue;
-
-                byte[] originalData = _pakFile.Extract(pakEntry);
+                byte[] originalData = _container.ExtractEntry(tag);
                 var locres = LocResFile.Load(originalData);
 
                 bool modified = false;
-                foreach (var entry in locres.Entries)
+                foreach (var e in locres.Entries)
                 {
                     var record = Records.FirstOrDefault(r =>
-                        r.Namespace == entry.Namespace && r.Key == entry.Key);
-                    if (record != null && record.Translated != entry.LocalizedString)
+                        r.Namespace == e.Namespace && r.Key == e.Key);
+                    if (record != null && record.Translated != e.LocalizedString)
                     {
-                        entry.LocalizedString = record.Translated;
+                        e.LocalizedString = record.Translated;
                         modified = true;
                     }
                 }
@@ -448,12 +413,12 @@ public partial class TranslationViewModel : ObservableObject
 
                 byte[] newData = locres.Save();
 
-                // 直接使用原始文件名（去掉 ../../../ 前缀）
-                string relPath = targetPath;
-                if (relPath.StartsWith("../../../"))
-                    relPath = relPath["../../../".Length..];
+                // 从路径中提取文件名
+                string fileName = entryPath.Contains('/')
+                    ? entryPath.Split('/').Last()
+                    : entryPath + ".locres";
 
-                string outPath = Path.Combine(outputDir, relPath);
+                string outPath = Path.Combine(outputDir, fileName);
                 Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
                 File.WriteAllBytes(outPath, newData);
                 count++;
