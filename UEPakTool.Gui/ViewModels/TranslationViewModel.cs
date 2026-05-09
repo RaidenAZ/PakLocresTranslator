@@ -2,13 +2,14 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using UEPakTool.Core.Ai;
+using UEPakTool.Core.Container;
 using UEPakTool.Core.LocRes;
-using UEPakTool.Core.Pak;
 using UEPakTool.Gui.Models;
 using UEPakTool.Gui.Services;
 
@@ -47,8 +48,8 @@ public partial class TranslationViewModel : ObservableObject
 
     public event Action<TranslationRecord>? RecordSourceChanged;
 
-    private PakFile? _pakFile;
-    private List<PakEntry> _selectedEntries = [];
+    private IContainerFile? _container;
+    private List<object> _entryTags = [];
     private List<int> _matchIndices = [];
     private CancellationTokenSource? _translateCts;
 
@@ -57,18 +58,28 @@ public partial class TranslationViewModel : ObservableObject
         Search(value);
     }
 
-    public void LoadFromPak(PakFile pakFile, List<PakEntry> entries, string targetLocale = "en")
+    public void LoadFromContainer(IContainerFile container, List<object> entryTags, string targetLocale = "zh")
     {
-        _pakFile = pakFile;
-        _selectedEntries = entries;
+        _container = container;
+        _entryTags = entryTags;
         Records.Clear();
 
-        var targetEntry = entries.FirstOrDefault(e => e.Filename.Contains($"/{targetLocale}/"))
-                        ?? entries.FirstOrDefault();
+        // 选第一个条目加载到翻译表格
+        object? targetTag = null;
+        foreach (var tag in entryTags)
+        {
+            var path = container.GetEntryPath(tag);
+            if (!string.IsNullOrEmpty(targetLocale) && path.Contains($"/{targetLocale}/"))
+            {
+                targetTag = tag;
+                break;
+            }
+        }
+        targetTag ??= entryTags.FirstOrDefault();
 
-        if (targetEntry == null) return;
+        if (targetTag == null) return;
 
-        byte[] data = pakFile.Extract(targetEntry);
+        byte[] data = container.ExtractEntry(targetTag);
         var locres = LocResFile.Load(data);
 
         foreach (var entry in locres.Entries)
@@ -101,50 +112,94 @@ public partial class TranslationViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ExportCsv()
+    private void ExportJson()
     {
         var dialog = new SaveFileDialog
         {
-            Title = "导出翻译表",
-            Filter = "CSV 文件 (*.csv)|*.csv"
+            Title = "导出翻译表 (JSON)",
+            Filter = "JSON 文件 (*.json)|*.json"
         };
         if (dialog.ShowDialog() != true) return;
 
-        using var writer = new StreamWriter(dialog.FileName, false, System.Text.Encoding.UTF8);
-        writer.WriteLine("Key,Original,Translated");
-        foreach (var r in Records)
-            writer.WriteLine($"\"{r.DisplayKey}\",\"{r.Original}\",\"{r.Translated}\"");
+        // 按 namespace 分组，与 FModel 导出格式兼容
+        var groups = Records.GroupBy(r => r.Namespace);
+        using var doc = new Utf8JsonWriter(File.Create(dialog.FileName), new JsonWriterOptions { Indented = true });
+        doc.WriteStartObject();
+        foreach (var g in groups)
+        {
+            doc.WritePropertyName(g.Key);
+            doc.WriteStartObject();
+            foreach (var r in g)
+                doc.WriteString(r.Key, r.Translated);
+            doc.WriteEndObject();
+        }
+        doc.WriteEndObject();
+
         StatusText = $"已导出 {Records.Count} 条到 {Path.GetFileName(dialog.FileName)}";
     }
 
     [RelayCommand]
-    private void ImportCsv()
+    private void ImportJson()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "导入翻译表",
-            Filter = "CSV 文件 (*.csv)|*.csv"
+            Title = "导入翻译表 (JSON)",
+            Filter = "JSON 文件 (*.json)|*.json"
         };
         if (dialog.ShowDialog() != true) return;
 
-        using var reader = new StreamReader(dialog.FileName, System.Text.Encoding.UTF8);
-        reader.ReadLine(); // skip header
-        int count = 0;
-        while (reader.ReadLine() is { } line)
-        {
-            var parts = ParseCsvLine(line);
-            if (parts.Length < 3) continue;
-            string key = parts[0], translated = parts[2];
-            var record = Records.FirstOrDefault(r => r.DisplayKey == key);
-            if (record != null && !string.IsNullOrWhiteSpace(translated))
-            {
-                record.Translated = translated;
-                record.Source = TranslationSource.ManuallyEntered;
-                count++;
-            }
-        }
+        int count = ImportJsonFile(dialog.FileName);
         UpdateStats();
         StatusText = $"已导入 {count} 条翻译";
+    }
+
+    private int ImportJsonFile(string path)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        int count = 0;
+        bool hasRecords = Records.Count > 0;
+
+        foreach (var nsProp in doc.RootElement.EnumerateObject())
+        {
+            string ns = nsProp.Name;
+            foreach (var keyProp in nsProp.Value.EnumerateObject())
+            {
+                string key = keyProp.Name;
+                string value = keyProp.Value.GetString() ?? "";
+
+                if (hasRecords)
+                {
+                    // 合并模式：匹配已有记录
+                    var record = Records.FirstOrDefault(r =>
+                        r.Namespace == ns && r.Key == key)
+                        ?? Records.FirstOrDefault(r => r.Key == key);
+
+                    if (record != null && !string.IsNullOrWhiteSpace(value))
+                    {
+                        record.Translated = value;
+                        record.Source = TranslationSource.ManuallyEntered;
+                        count++;
+                    }
+                }
+                else
+                {
+                    // 独立模式：从 JSON 直接创建记录
+                    var record = new TranslationRecord
+                    {
+                        Namespace = ns,
+                        Key = key,
+                        Original = value,
+                        SourceStringHash = 0
+                    };
+                    record.SetInitialValue(value);
+                    record.PropertyChanged += OnRecordChanged;
+                    Records.Add(record);
+                    count++;
+                }
+            }
+        }
+
+        return count;
     }
 
     public void Search(string text)
@@ -191,37 +246,6 @@ public partial class TranslationViewModel : ObservableObject
         CurrentMatchIndex = CurrentMatchIndex <= 1 ? _matchIndices.Count : CurrentMatchIndex - 1;
         HighlightedIndex = _matchIndices[CurrentMatchIndex - 1];
         return HighlightedIndex;
-    }
-
-    public void SaveToLocres(PakFile? pakFile, string locale, string outputDir)
-    {
-        var targetEntry = _selectedEntries.FirstOrDefault(e => e.Filename.Contains($"/{locale}/"));
-        if (targetEntry == null) return;
-
-        byte[] originalData = pakFile!.Extract(targetEntry);
-        var locres = LocResFile.Load(originalData);
-
-        foreach (var entry in locres.Entries)
-        {
-            var record = Records.FirstOrDefault(r =>
-                r.Namespace == entry.Namespace && r.Key == entry.Key);
-            if (record != null && record.Translated != entry.LocalizedString)
-            {
-                entry.LocalizedString = record.Translated;
-            }
-        }
-
-        byte[] newData = locres.Save();
-
-        string relativePath = targetEntry.Filename;
-        if (relativePath.StartsWith("../../../"))
-            relativePath = relativePath["../../../".Length..];
-
-        string outPath = Path.Combine(outputDir, relativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
-        File.WriteAllBytes(outPath, newData);
-
-        StatusText = $"已保存 {Path.GetFileName(outPath)}";
     }
 
     [RelayCommand]
@@ -396,9 +420,16 @@ public partial class TranslationViewModel : ObservableObject
     [RelayCommand]
     private void SaveLocresFiles()
     {
-        if (_pakFile == null || _selectedEntries.Count == 0) return;
+        if (Records.Count == 0) return;
 
-        // 让用户选择输出目录
+        // 独立模式：CSV/JSON 导入，无容器
+        if (_container == null)
+        {
+            SaveStandaloneLocres();
+            return;
+        }
+
+        // 容器模式：PAK/IoStore 加载
         var dialog = new SaveFileDialog
         {
             Title = "选择输出目录（随便输入文件名，选中后点保存）",
@@ -412,34 +443,21 @@ public partial class TranslationViewModel : ObservableObject
         {
             int count = 0;
 
-            foreach (var srcEntry in _selectedEntries)
+            foreach (var tag in _entryTags)
             {
-                // 提取目标 locale
-                var parts = srcEntry.Filename.Split('/');
-                var localeIdx = Array.FindIndex(parts, p =>
-                    p.Length >= 2 && p.Length <= 5 && p.All(c => char.IsLetter(c) || c == '-'));
+                var entryPath = _container.GetEntryPath(tag);
 
-                if (localeIdx < 0) continue;
-
-                string targetPath = string.Join('/', parts);
-
-                var pakEntry = _pakFile.FindFiles(targetPath).FirstOrDefault()
-                    ?? _pakFile.FindFiles("*").FirstOrDefault(e =>
-                        e.Filename.EndsWith(targetPath.Split('/').Last()));
-
-                if (pakEntry == null) continue;
-
-                byte[] originalData = _pakFile.Extract(pakEntry);
+                byte[] originalData = _container.ExtractEntry(tag);
                 var locres = LocResFile.Load(originalData);
 
                 bool modified = false;
-                foreach (var entry in locres.Entries)
+                foreach (var e in locres.Entries)
                 {
                     var record = Records.FirstOrDefault(r =>
-                        r.Namespace == entry.Namespace && r.Key == entry.Key);
-                    if (record != null && record.Translated != entry.LocalizedString)
+                        r.Namespace == e.Namespace && r.Key == e.Key);
+                    if (record != null && record.Translated != e.LocalizedString)
                     {
-                        entry.LocalizedString = record.Translated;
+                        e.LocalizedString = record.Translated;
                         modified = true;
                     }
                 }
@@ -448,12 +466,11 @@ public partial class TranslationViewModel : ObservableObject
 
                 byte[] newData = locres.Save();
 
-                // 直接使用原始文件名（去掉 ../../../ 前缀）
-                string relPath = targetPath;
-                if (relPath.StartsWith("../../../"))
-                    relPath = relPath["../../../".Length..];
+                string fileName = entryPath.Contains('/')
+                    ? entryPath.Split('/').Last()
+                    : entryPath + ".locres";
 
-                string outPath = Path.Combine(outputDir, relPath);
+                string outPath = Path.Combine(outputDir, fileName);
                 Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
                 File.WriteAllBytes(outPath, newData);
                 count++;
@@ -461,6 +478,44 @@ public partial class TranslationViewModel : ObservableObject
 
             StatusText = $"已保存 {count} 个 locres 到 {outputDir}";
             MessageBox.Show($"成功保存 {count} 个 locres 文件。\n输出目录: {outputDir}", "完成",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存失败: {ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void SaveStandaloneLocres()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存 locres 文件",
+            Filter = "locres 文件 (*.locres)|*.locres",
+            FileName = "Game.locres"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var locres = new LocResFile
+            {
+                Version = LocResFile.LocResVersion.Optimized_CityHash64_UTF16,
+                Entries = Records.Select(r => new LocResEntry
+                {
+                    Namespace = r.Namespace,
+                    Key = r.Key,
+                    LocalizedString = r.Translated,
+                    SourceStringHash = r.SourceStringHash
+                }).ToList()
+            };
+
+            byte[] data = locres.Save();
+            File.WriteAllBytes(dialog.FileName, data);
+            StatusText = $"已保存 {Path.GetFileName(dialog.FileName)}";
+
+            MessageBox.Show($"已保存 {locres.Entries.Count} 条翻译。\n{dialog.FileName}", "完成",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)

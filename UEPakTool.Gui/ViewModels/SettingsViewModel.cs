@@ -27,6 +27,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _promptBeforeOverwrite;
 
     [ObservableProperty]
+    private string _oodleDllPath = "";
+
+    [ObservableProperty]
     private string _connectionStatus = "";
 
     [ObservableProperty]
@@ -49,6 +52,11 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnModelNameChanged(string value) => Save();
     partial void OnApiFormatIndexChanged(int value) => Save();
     partial void OnPromptBeforeOverwriteChanged(bool value) => Save();
+    partial void OnOodleDllPathChanged(string value)
+    {
+        UEPakTool.Core.Compression.OodleDllConfig.Path = value;
+        Save();
+    }
 
     public void Load()
     {
@@ -58,6 +66,8 @@ public partial class SettingsViewModel : ObservableObject
         ModelName = config.ModelName;
         ApiFormatIndex = config.Format == ApiFormat.OpenAI ? 0 : 1;
         PromptBeforeOverwrite = config.PromptBeforeOverwrite;
+        OodleDllPath = config.OodleDllPath;
+        UEPakTool.Core.Compression.OodleDllConfig.Path = config.OodleDllPath;
 
         var glossary = SettingsService.LoadGlossary();
         GlossaryEntries.Clear();

@@ -3,6 +3,9 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using UEPakTool.Core.Compression;
+using UEPakTool.Core.Container;
+using UEPakTool.Core.IoStore;
 using UEPakTool.Core.Pak;
 using UEPakTool.Gui.Models;
 
@@ -17,7 +20,7 @@ public partial class PakBrowserViewModel : ObservableObject
     private bool _isLoaded;
 
     [ObservableProperty]
-    private string _statusText = "未加载 PAK";
+    private string _statusText = "未加载容器";
 
     [ObservableProperty]
     private int _totalFiles;
@@ -27,63 +30,46 @@ public partial class PakBrowserViewModel : ObservableObject
 
     public ObservableCollection<PakEntryNode> LocresNodes { get; } = [];
 
-    private PakFile? _pakFile;
-    private List<PakEntry> _locresEntries = [];
+    private IContainerFile? _container;
+    private List<object> _locresEntryTags = [];
+
+    public IRelayCommand? LoadToTranslationCommand { get; set; }
 
     [RelayCommand]
-    private void OpenPak()
+    private void OpenContainer()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "选择 PAK 文件",
-            Filter = "PAK 文件 (*.pak)|*.pak|所有文件 (*.*)|*.*"
+            Title = "选择容器文件",
+            Filter = "PAK / IoStore (*.pak;*.utoc)|*.pak;*.utoc|PAK 文件 (*.pak)|*.pak|IoStore TOC (*.utoc)|*.utoc|所有文件 (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
         {
-            LoadPak(dialog.FileName);
+            LoadContainer(dialog.FileName);
         }
     }
 
-    private void LoadPak(string path)
+    private void LoadContainer(string path)
     {
         try
         {
-            _pakFile?.Dispose();
-            _pakFile = PakFile.Open(path);
-            PakPath = path;
-            IsLoaded = true;
-            TotalFiles = _pakFile.Index.Entries.Count;
-            _locresEntries = _pakFile.FindFiles("*.locres").ToList();
-            LocresCount = _locresEntries.Count;
+            _container?.Dispose();
+            _locresEntryTags.Clear();
 
-            // 构建树节点
-            LocresNodes.Clear();
-            var groups = _locresEntries
-                .GroupBy(e =>
-                {
-                    var parts = e.Filename.Split('/');
-                    return parts.Length >= 2 ? parts[^2] : "?";
-                });
-
-            foreach (var g in groups)
+            // 将 PAK/IoStore 所在目录加入 Oodle DLL 搜索路径（游戏通常自带）
+            string? dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir))
             {
-                var node = new PakEntryNode { Name = g.Key, IsExpanded = true };
-                foreach (var e in g)
-                {
-                    node.Children.Add(new PakEntryNode
-                    {
-                        Name = e.Filename.Split('/').Last(),
-                        FullPath = e.Filename,
-                        Entry = e,
-                        IsChecked = false,
-                        AllNodes = LocresNodes // 用于单选互斥
-                    });
-                }
-                LocresNodes.Add(node);
+                OodleDllConfig.AddSearchDir(dir);
+                CompressionFactory.TryEnableOodle();
             }
 
-            StatusText = $"已加载: {Path.GetFileName(path)} — {TotalFiles:N0} 文件, {LocresCount} locres";
+            string ext = Path.GetExtension(path).ToLowerInvariant();
+            if (ext == ".utoc")
+                LoadIoStore(path);
+            else
+                LoadPak(path);
         }
         catch (Exception ex)
         {
@@ -91,19 +77,93 @@ public partial class PakBrowserViewModel : ObservableObject
         }
     }
 
-    public List<PakEntry> GetSelectedEntries()
+    private void LoadPak(string path)
     {
-        var selected = new List<PakEntry>();
+        var pakFile = PakFile.Open(path);
+        _container = pakFile;
+        PakPath = path;
+        IsLoaded = true;
+        TotalFiles = pakFile.Index.Entries.Count;
+        _locresEntryTags = _container.GetLocresEntryTags().ToList();
+        LocresCount = _locresEntryTags.Count;
+
+        BuildPakTree(pakFile, _locresEntryTags.Cast<PakEntry>().ToList());
+        StatusText = $"已加载: {Path.GetFileName(path)} — {TotalFiles:N0} 文件, {LocresCount} locres";
+    }
+
+    private void LoadIoStore(string path)
+    {
+        var ioFile = IoStoreFile.Open(path);
+        _container = ioFile;
+        PakPath = path;
+        IsLoaded = true;
+        TotalFiles = ioFile.TotalChunks;
+        _locresEntryTags = _container.GetLocresEntryTags().ToList();
+        LocresCount = _locresEntryTags.Count;
+
+        BuildIoStoreTree(ioFile, _locresEntryTags);
+        StatusText = $"已加载: {Path.GetFileName(path)} — {TotalFiles:N0} chunks, {LocresCount} locres";
+    }
+
+    private void BuildPakTree(PakFile pakFile, List<PakEntry> locresEntries)
+    {
+        LocresNodes.Clear();
+        // 按 locale 分组（路径中倒数第二个目录是 locale）
+        var groups = locresEntries
+            .GroupBy(e =>
+            {
+                var parts = e.Filename.Split('/');
+                return parts.Length >= 2 ? parts[^2] : "?";
+            });
+
+        foreach (var g in groups)
+        {
+            var node = new PakEntryNode { Name = g.Key, IsExpanded = true };
+            foreach (var e in g)
+            {
+                node.Children.Add(new PakEntryNode
+                {
+                    Name = e.Filename.Split('/').Last(),
+                    FullPath = e.Filename,
+                    EntryTag = e,
+                    IsChecked = false,
+                    AllNodes = LocresNodes
+                });
+            }
+            LocresNodes.Add(node);
+        }
+    }
+
+    private void BuildIoStoreTree(IoStoreFile ioFile, List<object> entryTags)
+    {
+        LocresNodes.Clear();
+        var groupNode = new PakEntryNode { Name = "LocRes Chunks", IsExpanded = true };
+        for (int i = 0; i < entryTags.Count; i++)
+        {
+            int chunkIndex = (int)entryTags[i];
+            groupNode.Children.Add(new PakEntryNode
+            {
+                Name = ioFile.GetChunkDisplayName(chunkIndex) + ".locres",
+                FullPath = ioFile.GetChunkDisplayName(chunkIndex),
+                EntryTag = entryTags[i],
+                IsChecked = false,
+                AllNodes = LocresNodes
+            });
+        }
+        LocresNodes.Add(groupNode);
+    }
+
+    public List<object> GetSelectedEntryTags()
+    {
+        var selected = new List<object>();
         foreach (var node in LocresNodes)
         foreach (var child in node.Children)
-            if (child.IsChecked && child.Entry != null)
-                selected.Add(child.Entry);
+            if (child.IsChecked && child.EntryTag != null)
+                selected.Add(child.EntryTag);
         return selected;
     }
 
-    public PakFile? GetPakFile() => _pakFile;
-
-    public IRelayCommand? LoadToTranslationCommand { get; set; }
+    public IContainerFile? GetContainer() => _container;
 }
 
 public partial class PakEntryNode : ObservableObject
@@ -118,17 +178,15 @@ public partial class PakEntryNode : ObservableObject
     private bool _isChecked;
 
     public string? FullPath { get; init; }
-    public PakEntry? Entry { get; init; }
+    public object? EntryTag { get; init; }
     public ObservableCollection<PakEntryNode> Children { get; } = [];
 
-    // 父级容器引用，用于实现单选互斥
     public ObservableCollection<PakEntryNode>? AllNodes { get; init; }
 
     partial void OnIsCheckedChanged(bool value)
     {
-        if (!value || Entry == null || AllNodes == null) return;
+        if (!value || EntryTag == null || AllNodes == null) return;
 
-        // 取消其他所有勾选
         foreach (var group in AllNodes)
         foreach (var child in group.Children)
             if (child != this)

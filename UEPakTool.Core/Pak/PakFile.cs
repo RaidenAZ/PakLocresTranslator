@@ -1,32 +1,55 @@
 using UEPakTool.Core.Archive;
+using UEPakTool.Core.Container;
 
 namespace UEPakTool.Core.Pak;
 
-public class PakFile : IDisposable
+public class PakFile : IContainerFile
 {
     private readonly Stream _stream;
     private readonly PakExtractor _extractor;
     private readonly bool _leaveOpen;
+    private readonly string _filePath;
 
     public PakFooter Footer { get; }
     public PakIndex Index { get; }
 
-    private PakFile(Stream stream, PakFooter footer, PakIndex index, bool leaveOpen)
+    string IContainerFile.ContainerPath => _filePath;
+
+    byte[] IContainerFile.ExtractEntry(object entryTag) =>
+        Extract((PakEntry)entryTag);
+
+    string IContainerFile.GetEntryPath(object entryTag) =>
+        ((PakEntry)entryTag).Filename;
+
+    IReadOnlyList<object> IContainerFile.GetLocresEntryTags(string? targetLocale)
+    {
+        var entries = FindFiles("*.locres").ToList();
+        if (!string.IsNullOrEmpty(targetLocale))
+        {
+            var filtered = entries.Where(e =>
+                e.Filename.Contains($"/{targetLocale}/", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (filtered.Count > 0) entries = filtered;
+        }
+        return entries.Cast<object>().ToList();
+    }
+
+    private PakFile(Stream stream, PakFooter footer, PakIndex index, bool leaveOpen, string filePath)
     {
         _stream = stream;
-        _extractor = new PakExtractor(stream);
+        _extractor = new PakExtractor(stream, footer.CompressionMethods);
         Footer = footer;
         Index = index;
         _leaveOpen = leaveOpen;
+        _filePath = filePath;
     }
 
     public static PakFile Open(string filePath)
     {
         var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        return Open(stream, leaveOpen: false);
+        return Open(stream, filePath, leaveOpen: false);
     }
 
-    public static PakFile Open(Stream stream, bool leaveOpen = false)
+    public static PakFile Open(Stream stream, string filePath = "", bool leaveOpen = false)
     {
         var footer = PakFooter.Read(stream);
 
@@ -73,7 +96,7 @@ public class PakFile : IDisposable
             }
         }
 
-        return new PakFile(stream, footer, index, leaveOpen);
+        return new PakFile(stream, footer, index, leaveOpen, filePath);
     }
 
     public IEnumerable<PakEntry> FindFiles(string pattern)

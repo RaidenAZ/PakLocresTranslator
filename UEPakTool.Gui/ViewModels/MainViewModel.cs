@@ -34,12 +34,20 @@ public partial class MainViewModel : ObservableObject
 
     private void LoadToTranslation()
     {
-        var pakFile = PakBrowser.GetPakFile();
-        var selected = PakBrowser.GetSelectedEntries();
-        if (pakFile == null || selected.Count == 0) return;
+        try
+        {
+            var container = PakBrowser.GetContainer();
+            var selected = PakBrowser.GetSelectedEntryTags();
+            if (container == null || selected.Count == 0) return;
 
-        Translation.LoadFromPak(pakFile, selected);
-        SelectedNavIndex = 1;
+            Translation.LoadFromContainer(container, selected);
+            SelectedNavIndex = 1;
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"加载翻译失败: {ex}", "错误",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
     }
 
     partial void OnSelectedNavIndexChanged(int value)

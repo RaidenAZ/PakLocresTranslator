@@ -32,13 +32,13 @@
             </Grid.ColumnDefinitions>
 
             <StackPanel Orientation="Horizontal">
-                <ui:Button Command="{Binding ExportCsvCommand}" Appearance="Secondary"
-                        Icon="{ui:SymbolIcon ArrowDownload20}" Margin="0,0,8,0">
-                    导出 CSV
+                <ui:Button Command="{Binding ExportJsonCommand}" Appearance="Secondary"
+                        Icon="{ui:SymbolIcon ArrowDownload20}" Margin="0,0,4,0" ToolTip="导出 JSON (与 FModel 格式兼容)">
+                    导出
                 </ui:Button>
-                <ui:Button Command="{Binding ImportCsvCommand}" Appearance="Secondary"
-                        Icon="{ui:SymbolIcon ArrowUpload20}" Margin="0,0,4,0">
-                    导入 CSV
+                <ui:Button Command="{Binding ImportJsonCommand}" Appearance="Secondary"
+                        Icon="{ui:SymbolIcon ArrowUpload20}" Margin="0,0,4,0" ToolTip="导入 JSON (FModel 导出格式)">
+                    导入
                 </ui:Button>
                 <ui:Button Command="{Binding SaveLocresFilesCommand}" Appearance="Secondary"
                         Icon="{ui:SymbolIcon Save20}" Margin="0,0,8,0">
