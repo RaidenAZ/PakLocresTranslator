@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
+using System.Text.Json;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -128,16 +129,27 @@ public partial class TranslationViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ImportCsv()
+    private void ImportTranslation()
     {
         var dialog = new OpenFileDialog
         {
             Title = "导入翻译表",
-            Filter = "CSV 文件 (*.csv)|*.csv"
+            Filter = "翻译表 (*.csv;*.json)|*.csv;*.json|CSV 文件 (*.csv)|*.csv|JSON 文件 (*.json)|*.json"
         };
         if (dialog.ShowDialog() != true) return;
 
-        using var reader = new StreamReader(dialog.FileName, System.Text.Encoding.UTF8);
+        string ext = Path.GetExtension(dialog.FileName).ToLowerInvariant();
+        int count = ext == ".json"
+            ? ImportJson(dialog.FileName)
+            : ImportCsvFile(dialog.FileName);
+
+        UpdateStats();
+        StatusText = $"已导入 {count} 条翻译";
+    }
+
+    private int ImportCsvFile(string path)
+    {
+        using var reader = new StreamReader(path, System.Text.Encoding.UTF8);
         reader.ReadLine(); // skip header
         int count = 0;
         while (reader.ReadLine() is { } line)
@@ -153,8 +165,57 @@ public partial class TranslationViewModel : ObservableObject
                 count++;
             }
         }
-        UpdateStats();
-        StatusText = $"已导入 {count} 条翻译";
+        return count;
+    }
+
+    private int ImportJson(string path)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        int count = 0;
+        bool hasRecords = Records.Count > 0;
+
+        foreach (var nsProp in doc.RootElement.EnumerateObject())
+        {
+            string ns = nsProp.Name;
+            foreach (var keyProp in nsProp.Value.EnumerateObject())
+            {
+                string key = keyProp.Name;
+                string value = keyProp.Value.GetString() ?? "";
+
+                if (hasRecords)
+                {
+                    // 合并模式：匹配已有记录
+                    var record = Records.FirstOrDefault(r =>
+                        r.Namespace == ns && r.Key == key)
+                        ?? Records.FirstOrDefault(r => r.Key == key);
+
+                    if (record != null && !string.IsNullOrWhiteSpace(value)
+                        && record.Translated != value)
+                    {
+                        record.Translated = value;
+                        record.Source = TranslationSource.ManuallyEntered;
+                        count++;
+                    }
+                }
+                else
+                {
+                    // 独立模式：从 JSON 直接创建记录
+                    var record = new TranslationRecord
+                    {
+                        Namespace = ns,
+                        Key = key,
+                        Original = value,
+                        SourceStringHash = 0
+                    };
+                    record.SetInitialValue(value);
+                    record.PropertyChanged += OnRecordChanged;
+                    Records.Add(record);
+                    count++;
+                }
+            }
+        }
+
+        return count;
     }
 
     public void Search(string text)
