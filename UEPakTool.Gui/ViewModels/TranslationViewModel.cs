@@ -112,63 +112,48 @@ public partial class TranslationViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ExportCsv()
+    private void ExportJson()
     {
         var dialog = new SaveFileDialog
         {
-            Title = "导出翻译表",
-            Filter = "CSV 文件 (*.csv)|*.csv"
+            Title = "导出翻译表 (JSON)",
+            Filter = "JSON 文件 (*.json)|*.json"
         };
         if (dialog.ShowDialog() != true) return;
 
-        using var writer = new StreamWriter(dialog.FileName, false, System.Text.Encoding.UTF8);
-        writer.WriteLine("Key,Original,Translated");
-        foreach (var r in Records)
-            writer.WriteLine($"\"{r.DisplayKey}\",\"{r.Original}\",\"{r.Translated}\"");
+        // 按 namespace 分组，与 FModel 导出格式兼容
+        var groups = Records.GroupBy(r => r.Namespace);
+        using var doc = new Utf8JsonWriter(File.Create(dialog.FileName), new JsonWriterOptions { Indented = true });
+        doc.WriteStartObject();
+        foreach (var g in groups)
+        {
+            doc.WritePropertyName(g.Key);
+            doc.WriteStartObject();
+            foreach (var r in g)
+                doc.WriteString(r.Key, r.Translated);
+            doc.WriteEndObject();
+        }
+        doc.WriteEndObject();
+
         StatusText = $"已导出 {Records.Count} 条到 {Path.GetFileName(dialog.FileName)}";
     }
 
     [RelayCommand]
-    private void ImportTranslation()
+    private void ImportJson()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "导入翻译表",
-            Filter = "翻译表 (*.csv;*.json)|*.csv;*.json|CSV 文件 (*.csv)|*.csv|JSON 文件 (*.json)|*.json"
+            Title = "导入翻译表 (JSON)",
+            Filter = "JSON 文件 (*.json)|*.json"
         };
         if (dialog.ShowDialog() != true) return;
 
-        string ext = Path.GetExtension(dialog.FileName).ToLowerInvariant();
-        int count = ext == ".json"
-            ? ImportJson(dialog.FileName)
-            : ImportCsvFile(dialog.FileName);
-
+        int count = ImportJsonFile(dialog.FileName);
         UpdateStats();
         StatusText = $"已导入 {count} 条翻译";
     }
 
-    private int ImportCsvFile(string path)
-    {
-        using var reader = new StreamReader(path, System.Text.Encoding.UTF8);
-        reader.ReadLine(); // skip header
-        int count = 0;
-        while (reader.ReadLine() is { } line)
-        {
-            var parts = ParseCsvLine(line);
-            if (parts.Length < 3) continue;
-            string key = parts[0], translated = parts[2];
-            var record = Records.FirstOrDefault(r => r.DisplayKey == key);
-            if (record != null && !string.IsNullOrWhiteSpace(translated))
-            {
-                record.Translated = translated;
-                record.Source = TranslationSource.ManuallyEntered;
-                count++;
-            }
-        }
-        return count;
-    }
-
-    private int ImportJson(string path)
+    private int ImportJsonFile(string path)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
         int count = 0;
@@ -189,8 +174,7 @@ public partial class TranslationViewModel : ObservableObject
                         r.Namespace == ns && r.Key == key)
                         ?? Records.FirstOrDefault(r => r.Key == key);
 
-                    if (record != null && !string.IsNullOrWhiteSpace(value)
-                        && record.Translated != value)
+                    if (record != null && !string.IsNullOrWhiteSpace(value))
                     {
                         record.Translated = value;
                         record.Source = TranslationSource.ManuallyEntered;
@@ -436,8 +420,16 @@ public partial class TranslationViewModel : ObservableObject
     [RelayCommand]
     private void SaveLocresFiles()
     {
-        if (_container == null || _entryTags.Count == 0) return;
+        if (Records.Count == 0) return;
 
+        // 独立模式：CSV/JSON 导入，无容器
+        if (_container == null)
+        {
+            SaveStandaloneLocres();
+            return;
+        }
+
+        // 容器模式：PAK/IoStore 加载
         var dialog = new SaveFileDialog
         {
             Title = "选择输出目录（随便输入文件名，选中后点保存）",
@@ -474,7 +466,6 @@ public partial class TranslationViewModel : ObservableObject
 
                 byte[] newData = locres.Save();
 
-                // 从路径中提取文件名
                 string fileName = entryPath.Contains('/')
                     ? entryPath.Split('/').Last()
                     : entryPath + ".locres";
@@ -487,6 +478,44 @@ public partial class TranslationViewModel : ObservableObject
 
             StatusText = $"已保存 {count} 个 locres 到 {outputDir}";
             MessageBox.Show($"成功保存 {count} 个 locres 文件。\n输出目录: {outputDir}", "完成",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"保存失败: {ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void SaveStandaloneLocres()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存 locres 文件",
+            Filter = "locres 文件 (*.locres)|*.locres",
+            FileName = "Game.locres"
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            var locres = new LocResFile
+            {
+                Version = LocResFile.LocResVersion.Optimized_CityHash64_UTF16,
+                Entries = Records.Select(r => new LocResEntry
+                {
+                    Namespace = r.Namespace,
+                    Key = r.Key,
+                    LocalizedString = r.Translated,
+                    SourceStringHash = r.SourceStringHash
+                }).ToList()
+            };
+
+            byte[] data = locres.Save();
+            File.WriteAllBytes(dialog.FileName, data);
+            StatusText = $"已保存 {Path.GetFileName(dialog.FileName)}";
+
+            MessageBox.Show($"已保存 {locres.Entries.Count} 条翻译。\n{dialog.FileName}", "完成",
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
