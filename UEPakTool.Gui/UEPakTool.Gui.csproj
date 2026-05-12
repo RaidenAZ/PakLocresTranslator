@@ -20,8 +20,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>icon.ico</ApplicationIcon>
-    <AssemblyName>TSWPakLocalizationTool</AssemblyName>
+    <ApplicationIcon>icon.ico</ApplicationIcon>    <AssemblyName>TSWPakLocalizationTool</AssemblyName>
     <Version>1.2</Version>
     <FileVersion>1.2</FileVersion>
   </PropertyGroup>

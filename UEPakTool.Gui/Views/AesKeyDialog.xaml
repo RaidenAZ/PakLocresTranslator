@@ -1,0 +1,32 @@
+<ui:FluentWindow x:Class="UEPakTool.Gui.Views.AesKeyDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="输入 AES 密钥" Width="520" Height="220"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        WindowCornerPreference="Round"
+        ExtendsContentIntoTitleBar="True">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="输入 AES 密钥" />
+
+        <TextBlock Grid.Row="1" Text="此 PAK 文件已加密，请输入 AES-256 密钥："
+                   FontWeight="SemiBold" Margin="0,8,0,8" />
+        <TextBlock Grid.Row="2" Text="格式：0x + 64 位十六进制字符"
+                   Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}" Margin="0,0,0,12" />
+        <ui:TextBox Grid.Row="3" x:Name="KeyTextBox" Margin="0,0,0,16"
+                    PlaceholderText="0x6FBE99000E45537695E21C604A27BDB983551E4BC5377F89E32D4445A35A233E" />
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+            <ui:Button x:Name="CancelBtn" Content="取消" Appearance="Secondary" Margin="0,0,8,0" Click="Cancel_Click" />
+            <ui:Button x:Name="OkBtn" Content="确定" Appearance="Primary" Click="Ok_Click" />
+        </StackPanel>
+    </Grid>
+</ui:FluentWindow>
