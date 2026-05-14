@@ -8,7 +8,7 @@ public class DeflateCompressionProvider : ICompressionProvider
     public string MethodName => "Zlib";
     public bool IsAvailable => true;
 
-    public byte[] Decompress(byte[] compressed, int compressedSize)
+    public byte[] Decompress(byte[] compressed, int compressedSize, int _ = 0)
     {
         bool hasZlibHeader = compressed.Length >= 2 && compressed[0] == 0x78;
 

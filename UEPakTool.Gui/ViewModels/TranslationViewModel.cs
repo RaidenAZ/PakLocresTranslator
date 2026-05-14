@@ -7,6 +7,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using UEPakTool.Core;
 using UEPakTool.Core.Ai;
 using UEPakTool.Core.Container;
 using UEPakTool.Core.LocRes;

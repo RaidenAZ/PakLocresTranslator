@@ -149,10 +149,15 @@ public class PakIndex
         // 构建 CompressionBlocks
         var blocks = new List<CompressionBlock>(compressionBlocksCount);
 
-        // 计算 StructSize
-        int structSize = 8 * 3 + 4 * 2 + 1 + 20; // = 53
+        // structSize = in-file FPakEntry struct 大小（legacy 格式）
+        // base: Offset(8)+UncompSize(8)+CompSize(8)+UncompOffset(8)+CompMethod(1)+CompBlockSize(4)+Flags(1)+Hash(20)-3 = 53
+        // compressed: +CompSize(4) + blocks * (Start(8)+End(8))
+        int structSize = 8 * 3 + 4 * 2 + 1 + 20;
         if (compressionMethodIndex != 0)
             structSize += 4 + compressionBlocksCount * 2 * 8;
+
+        // 加密块的磁盘偏移按 16 字节对齐
+        int alignment = encrypted ? 16 : 1;
 
         if (compressionBlocksCount == 1 && !encrypted)
         {
@@ -175,7 +180,7 @@ public class PakIndex
                     CompressedStart = blockOffset,
                     CompressedEnd = blockOffset + blockSize
                 });
-                blockOffset += blockSize;
+                blockOffset += Align(blockSize, alignment);
             }
         }
 
@@ -192,4 +197,7 @@ public class PakIndex
             StructSize = structSize
         };
     }
+
+    private static long Align(long value, int alignment) =>
+        (value + alignment - 1) & ~(alignment - 1);
 }

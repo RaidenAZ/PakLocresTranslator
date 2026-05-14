@@ -1,13 +1,16 @@
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using UEPakTool.Core.Compression;
 using UEPakTool.Core.Container;
+using UEPakTool.Core.Encryption;
 using UEPakTool.Core.IoStore;
 using UEPakTool.Core.Pak;
 using UEPakTool.Gui.Models;
+using UEPakTool.Gui.Views;
 
 namespace UEPakTool.Gui.ViewModels;
 
@@ -74,12 +77,35 @@ public partial class PakBrowserViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusText = $"加载失败: {ex.Message}";
+            MessageBox.Show($"加载容器失败:\n{ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     private void LoadPak(string path)
     {
-        var pakFile = PakFile.Open(path);
+        // 先读取 PAK 尾部，检查是否需要 AES 密钥
+        FAesKey? aesKey = null;
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var footer = PakFooter.Read(fs);
+            if (footer.EncryptedIndex)
+            {
+                aesKey = PromptForAesKey();
+                if (aesKey == null)
+                {
+                    StatusText = "已取消：需要 AES 密钥才能加载加密 PAK";
+                    return;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not InvalidDataException)
+        {
+            // 读取尾部失败，继续尝试直接加载（可能非 v11 PAK）
+        }
+
+        var pakFile = PakFile.Open(path, aesKey);
         _container = pakFile;
         PakPath = path;
         IsLoaded = true;
@@ -89,6 +115,26 @@ public partial class PakBrowserViewModel : ObservableObject
 
         BuildPakTree(pakFile, _locresEntryTags.Cast<PakEntry>().ToList());
         StatusText = $"已加载: {Path.GetFileName(path)} — {TotalFiles:N0} 文件, {LocresCount} locres";
+    }
+
+    private static FAesKey? PromptForAesKey()
+    {
+        var dialog = new AesKeyDialog();
+        var result = dialog.ShowDialog();
+        if (result == true && !string.IsNullOrWhiteSpace(dialog.KeyInput))
+        {
+            try
+            {
+                return new FAesKey(dialog.KeyInput);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"AES 密钥格式无效: {ex.Message}", "密钥错误",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return null;
+            }
+        }
+        return null;
     }
 
     private void LoadIoStore(string path)

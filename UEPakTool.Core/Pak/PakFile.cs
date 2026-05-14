@@ -1,5 +1,6 @@
 using UEPakTool.Core.Archive;
 using UEPakTool.Core.Container;
+using UEPakTool.Core.Encryption;
 
 namespace UEPakTool.Core.Pak;
 
@@ -33,23 +34,25 @@ public class PakFile : IContainerFile
         return entries.Cast<object>().ToList();
     }
 
-    private PakFile(Stream stream, PakFooter footer, PakIndex index, bool leaveOpen, string filePath)
+    private PakFile(Stream stream, PakFooter footer, PakIndex index,
+        bool leaveOpen, string filePath, FAesKey? aesKey)
     {
         _stream = stream;
-        _extractor = new PakExtractor(stream, footer.CompressionMethods);
+        _extractor = new PakExtractor(stream, footer.CompressionMethods, aesKey);
         Footer = footer;
         Index = index;
         _leaveOpen = leaveOpen;
         _filePath = filePath;
     }
 
-    public static PakFile Open(string filePath)
+    public static PakFile Open(string filePath, FAesKey? aesKey = null)
     {
         var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-        return Open(stream, filePath, leaveOpen: false);
+        return Open(stream, filePath, leaveOpen: false, aesKey);
     }
 
-    public static PakFile Open(Stream stream, string filePath = "", bool leaveOpen = false)
+    public static PakFile Open(Stream stream, string filePath = "",
+        bool leaveOpen = false, FAesKey? aesKey = null)
     {
         var footer = PakFooter.Read(stream);
 
@@ -58,12 +61,26 @@ public class PakFile : IContainerFile
         byte[] primaryIndexData = new byte[footer.IndexSize];
         stream.ReadExactly(primaryIndexData);
 
+        if (footer.EncryptedIndex)
+        {
+            if (aesKey == null)
+                throw new InvalidOperationException("PAK 索引已加密，需要提供 AES 密钥。");
+            primaryIndexData = AesDecryptor.DecryptSafe(primaryIndexData, aesKey);
+            if (!AesDecryptor.IsValidIndex(primaryIndexData))
+                throw new InvalidDataException("AES 密钥无效：解密后的索引数据无法通过验证。");
+        }
+
         var index = PakIndex.Read(primaryIndexData);
 
         // ──── 阶段2：读取 DirectoryIndex ────
         stream.Seek(index._directoryIndexOffset, SeekOrigin.Begin);
         byte[] directoryIndexData = new byte[index._directoryIndexSize];
         stream.ReadExactly(directoryIndexData);
+
+        if (footer.EncryptedIndex)
+        {
+            directoryIndexData = AesDecryptor.DecryptSafe(directoryIndexData, aesKey!);
+        }
 
         using var dirReader = new FArchiveReader(directoryIndexData);
         int directoryCount = dirReader.ReadInt32();
@@ -96,7 +113,7 @@ public class PakFile : IContainerFile
             }
         }
 
-        return new PakFile(stream, footer, index, leaveOpen, filePath);
+        return new PakFile(stream, footer, index, leaveOpen, filePath, aesKey);
     }
 
     public IEnumerable<PakEntry> FindFiles(string pattern)

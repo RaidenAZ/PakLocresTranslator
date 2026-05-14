@@ -8,7 +8,7 @@ public class Lz4CompressionProvider : ICompressionProvider
     public string MethodName => "LZ4";
     public bool IsAvailable => true;
 
-    public byte[] Decompress(byte[] compressed, int compressedSize)
+    public byte[] Decompress(byte[] compressed, int compressedSize, int _ = 0)
     {
         // LZ4 最大解压后大小约为压缩大小的 255 倍 + 16，但实际通常不超过几 MB
         int maxDecompressed = compressedSize * 2 + 256;
