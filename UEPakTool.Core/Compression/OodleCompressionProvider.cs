@@ -1,51 +1,45 @@
-using System.Runtime.InteropServices;
+using OodleDotNet;
 
 namespace UEPakTool.Core.Compression;
 
 /// <summary>
-/// Oodle 解压 — P/Invoke oo2core DLL。DLL 随 EXE 捆绑发布。
+/// Oodle 解压 — 通过 Oodle.NET NuGet 包，自动适配
+/// oo2core_9_win64.dll (旧) 和 oodle-data-shared.dll (新)。
 /// </summary>
 public class OodleCompressionProvider : ICompressionProvider
 {
     public string MethodName { get; }
-    public bool IsAvailable => _decompress != null;
+    public bool IsAvailable => _oodle != null;
 
-    private readonly OodleLZ_DecompressDelegate? _decompress;
-
-    private enum OodleLZ_FuzzSafe { No = 0, Yes = 1 }
-    private enum OodleLZ_CheckCRC { No = 0, Yes = 1 }
-    private enum OodleLZ_Verbosity { None = 0 }
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    private delegate long OodleLZ_DecompressDelegate(
-        byte[] compressed, long compressedSize,
-        byte[] output, long outputSize,
-        int fuzzSafe, int checkCrc, int verbosity,
-        nint dictBase, long dictSize, nint threadPhase);
+    private readonly Oodle? _oodle;
 
     private static readonly string[] KnownDlls =
-        ["oo2core_9_win64.dll", "oo2core_8_win64.dll"];
+        ["oodle-data-shared.dll", "oo2core_9_win64.dll", "oo2core_8_win64.dll"];
 
     public OodleCompressionProvider(string methodName = "Oodle")
     {
         MethodName = methodName;
-        _decompress = TryLoad();
+        _oodle = TryLoad();
+        DebugLog.Write($"Oodle: found={(object?)_oodle != null}");
     }
 
     internal static string? FindDll()
     {
-        // 1. EXE 同目录（捆绑发布）
+        // 1. EXE 同目录
         string exeDir = AppContext.BaseDirectory;
         foreach (var dll in KnownDlls)
         {
             string p = Path.Combine(exeDir, dll);
-            if (File.Exists(p)) return p;
+            if (File.Exists(p)) { DebugLog.Write($"Oodle: found DLL {p}"); return p; }
         }
 
         // 2. 用户指定路径
         string? userPath = OodleDllConfig.Path;
         if (!string.IsNullOrEmpty(userPath) && File.Exists(userPath))
+        {
+            DebugLog.Write($"Oodle: using user path {userPath}");
             return userPath;
+        }
 
         // 3. 游戏目录向上搜索
         foreach (var pakDir in OodleDllConfig.ExtraSearchDirs)
@@ -63,12 +57,12 @@ public class OodleCompressionProvider : ICompressionProvider
             foreach (var dll in KnownDlls)
             {
                 string p = Path.Combine(dir, dll);
-                if (File.Exists(p)) return p;
+                if (File.Exists(p)) { DebugLog.Write($"Oodle: found DLL in game dir {p}"); return p; }
             }
             foreach (var dll in KnownDlls)
             {
                 string p = Path.Combine(dir, "Binaries", "Win64", dll);
-                if (File.Exists(p)) return p;
+                if (File.Exists(p)) { DebugLog.Write($"Oodle: found DLL in game binaries {p}"); return p; }
             }
             var parent = Path.GetDirectoryName(dir);
             if (parent == dir) break;
@@ -77,36 +71,51 @@ public class OodleCompressionProvider : ICompressionProvider
         return null;
     }
 
-    private static OodleLZ_DecompressDelegate? TryLoad()
+    private static Oodle? TryLoad()
     {
         string? dllPath = FindDll();
-        if (dllPath == null) return null;
+        if (dllPath == null)
+        {
+            DebugLog.Write("Oodle: DLL not found");
+            return null;
+        }
         try
         {
-            var handle = NativeLibrary.Load(dllPath);
-            if (NativeLibrary.TryGetExport(handle, "OodleLZ_Decompress", out var addr) && addr != nint.Zero)
-                return Marshal.GetDelegateForFunctionPointer<OodleLZ_DecompressDelegate>(addr);
+            DebugLog.Write($"Oodle: loading {dllPath}");
+            return new Oodle(dllPath);
         }
-        catch { }
-        return null;
+        catch (Exception ex)
+        {
+            DebugLog.Write($"Oodle: load failed: {ex.Message}");
+            return null;
+        }
     }
 
-    public byte[] Decompress(byte[] compressed, int compressedSize)
+    public byte[] Decompress(byte[] compressed, int compressedSize, int expectedUncompressedSize = 0)
     {
-        if (_decompress == null)
+        if (_oodle == null)
             throw new InvalidOperationException("Oodle decompressor not available.");
 
-        // 尝试几个常见的 block 大小；UE 通常用 64KB-256KB
+        var src = compressed.AsSpan(0, compressedSize);
+
+        // 先试精确大小
+        if (expectedUncompressedSize > 0)
+        {
+            var dst = new byte[expectedUncompressedSize];
+            nint result = _oodle.Decompress(src, dst);
+            if (result > 0)
+                return dst.AsSpan(0, (int)result).ToArray();
+        }
+
+        // 回退：渐进尝试常见块大小
         int[] sizes = [65536, 131072, 262144, 524288, 1048576];
         foreach (int size in sizes)
         {
-            var output = new byte[size];
-            long result = _decompress(compressed, compressedSize, output, size,
-                (int)OodleLZ_FuzzSafe.No, (int)OodleLZ_CheckCRC.No,
-                (int)OodleLZ_Verbosity.None, nint.Zero, 0, nint.Zero);
-
-            if (result > 0 && result < size)
-                return output.AsSpan(0, (int)result).ToArray();
+            if (size == expectedUncompressedSize) continue;
+            var dst = new byte[size];
+            nint result = _oodle.Decompress(src, dst);
+            if (result > 0 && result <= size)
+                return dst.AsSpan(0, (int)result).ToArray();
         }
 
         throw new InvalidDataException("Oodle decompression failed: none of the tried buffer sizes worked.");

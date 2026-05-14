@@ -1,6 +1,7 @@
 using System.Windows.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using UEPakTool.Core;
 using UEPakTool.Gui.Views;
 
 namespace UEPakTool.Gui.ViewModels;
@@ -45,6 +46,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            DebugLog.Write($"LoadToTranslation EXCEPTION: {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
             System.Windows.MessageBox.Show($"加载翻译失败: {ex}", "错误",
                 System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
