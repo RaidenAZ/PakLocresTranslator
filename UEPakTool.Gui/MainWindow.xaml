@@ -1,14 +1,16 @@
 <ui:FluentWindow x:Class="UEPakTool.Gui.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-        xmlns:vm="clr-namespace:UEPakTool.Gui.ViewModels"
-        Title="TSW 本地化工具 v1.4.1"
-        Height="800" Width="1280"
-        MinHeight="600" MinWidth="960"
-        ExtendsContentIntoTitleBar="True"
-        WindowCornerPreference="Round"
-        WindowStartupLocation="CenterScreen">
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:UEPakTool.Gui.ViewModels"
+                 Title="TSW 本地化工具 v1.4.1"
+                 Height="800"
+                 Width="1280"
+                 MinHeight="600"
+                 MinWidth="960"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowCornerPreference="Round"
+                 WindowStartupLocation="CenterScreen">
 
     <ui:FluentWindow.DataContext>
         <vm:MainViewModel x:Name="MainVM" />
@@ -19,21 +21,18 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
 
-        <ui:TitleBar Grid.Row="0" Grid.ColumnSpan="2"
-                     Title="UE Pak本地化工具 v1.4" />
+        <ui:TitleBar Grid.Row="0"
+                     Title="TSW 本地化工具 v1.4.1" />
 
         <ui:NavigationView x:Name="NavView"
-                           Grid.Row="1" Grid.Column="0"
+                           Grid.Row="1"
                            IsPaneOpen="True"
                            OpenPaneLength="80"
                            PaneDisplayMode="LeftFluent"
                            IsBackButtonVisible="Collapsed"
                            BorderThickness="0">
+
             <ui:NavigationView.MenuItems>
                 <ui:NavigationViewItem Content="文件浏览"
                                        Icon="{ui:SymbolIcon Box24}"
@@ -44,6 +43,7 @@
                                        Tag="translation"
                                        Click="NavItem_Click" />
             </ui:NavigationView.MenuItems>
+
             <ui:NavigationView.FooterMenuItems>
                 <ui:NavigationViewItem Content="设置"
                                        Icon="{ui:SymbolIcon Settings24}"
@@ -52,6 +52,12 @@
             </ui:NavigationView.FooterMenuItems>
         </ui:NavigationView>
 
-        <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding CurrentPage}" />
+        <!-- 内容区覆盖在 NavigationView 右侧 -->
+        <ContentControl Grid.Row="1" Margin="80,0,0,0"
+                        Content="{Binding CurrentPage}">
+            <ContentControl.Resources>
+                <Style TargetType="UserControl" BasedOn="{StaticResource {x:Type UserControl}}" />
+            </ContentControl.Resources>
+        </ContentControl>
     </Grid>
 </ui:FluentWindow>

@@ -38,13 +38,11 @@ public partial class MainWindow
         };
         if (targetTag == null) return;
 
-        // 取消所有项的激活
         foreach (var mi in NavView.MenuItems)
             if (mi is NavigationViewItem ni) ni.IsActive = false;
         foreach (var fi in NavView.FooterMenuItems)
             if (fi is NavigationViewItem ni) ni.IsActive = false;
 
-        // 激活与目标 Tag 匹配的项
         foreach (var mi in NavView.MenuItems)
             if (mi is NavigationViewItem ni && ni.Tag?.ToString() == targetTag)
                 ni.IsActive = true;
