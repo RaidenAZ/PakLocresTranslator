@@ -180,7 +180,7 @@ public class PakIndex
                     CompressedStart = blockOffset,
                     CompressedEnd = blockOffset + blockSize
                 });
-                blockOffset += Align(blockSize, alignment);
+                blockOffset += AlignHelper.Align(blockSize, alignment);
             }
         }
 
@@ -198,6 +198,4 @@ public class PakIndex
         };
     }
 
-    private static long Align(long value, int alignment) =>
-        (value + alignment - 1) & ~(alignment - 1);
 }

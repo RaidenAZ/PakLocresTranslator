@@ -14,11 +14,4 @@ public static class GlossaryPostProcessor
         }
         return translated;
     }
-
-    public static void Apply(Dictionary<string, string> results,
-        List<(string Source, string Target)> glossary)
-    {
-        foreach (var key in results.Keys.ToList())
-            results[key] = ApplySingle(results[key], glossary);
-    }
 }

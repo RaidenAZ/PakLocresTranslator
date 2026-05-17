@@ -1,3 +1,5 @@
+using UEPakTool.Core.Ai;
+
 namespace UEPakTool.Gui.Models;
 
 public class AiConfig
@@ -10,10 +12,4 @@ public class AiConfig
     public int BatchSize { get; set; } = 15;
     public string? SystemPrompt { get; set; }
     public string OodleDllPath { get; set; } = "";
-}
-
-public enum ApiFormat
-{
-    OpenAI,
-    Anthropic
 }
