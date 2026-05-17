@@ -11,8 +11,6 @@
                 <ui:ControlsDictionary />
             </ResourceDictionary.MergedDictionaries>
 
-            <conv:IntToBoolConverter x:Key="IntToBool" />
-            <conv:BoolToColorConverter x:Key="BoolToConnectionColor" />
             <conv:InvertBoolConverter x:Key="InvertBool" />
         </ResourceDictionary>
     </Application.Resources>

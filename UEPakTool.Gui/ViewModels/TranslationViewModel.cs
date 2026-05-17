@@ -301,7 +301,7 @@ public partial class TranslationViewModel : ObservableObject
 
             var dispatcher = Application.Current.Dispatcher;
             var token = _translateCts.Token;
-            const int batchSize = 15;
+            int batchSize = config.BatchSize > 0 ? config.BatchSize : 15;
 
             var done = await Task.Run(async () =>
             {
@@ -327,7 +327,7 @@ public partial class TranslationViewModel : ObservableObject
                     try
                     {
                         batchResults = await client.TranslateBatchAsync(
-                            batch, aiConfig, glossary, token);
+                            batch, aiConfig, glossary, config.SystemPrompt, token);
                     }
                     catch (FormatException fe)
                     {

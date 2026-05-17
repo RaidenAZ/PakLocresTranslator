@@ -27,6 +27,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _promptBeforeOverwrite;
 
     [ObservableProperty]
+    private int _batchSize = 15;
+
+    [ObservableProperty]
+    private string _systemPrompt = "";
+
+    [ObservableProperty]
     private string _oodleDllPath = "";
 
     [ObservableProperty]
@@ -43,8 +49,16 @@ public partial class SettingsViewModel : ObservableObject
     private string _newGlossaryTarget = "";
 
     public ObservableCollection<GlossaryEntry> GlossaryEntries { get; } = [];
+    public List<int> BatchSizeOptions { get; } = [5, 10, 15, 20, 30, 50];
+    public string DefaultSystemPrompt => Core.Ai.PromptBuilder.GetDefaultTemplate();
 
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+
+    [RelayCommand]
+    private void ResetPrompt()
+    {
+        SystemPrompt = "";
+    }
 
     // 关键属性变化时自动保存
     partial void OnApiUrlChanged(string value) => Save();
@@ -52,6 +66,8 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnModelNameChanged(string value) => Save();
     partial void OnApiFormatIndexChanged(int value) => Save();
     partial void OnPromptBeforeOverwriteChanged(bool value) => Save();
+    partial void OnBatchSizeChanged(int value) => Save();
+    partial void OnSystemPromptChanged(string value) => Save();
     partial void OnOodleDllPathChanged(string value)
     {
         UEPakTool.Core.Compression.OodleDllConfig.Path = value;
@@ -66,6 +82,8 @@ public partial class SettingsViewModel : ObservableObject
         ModelName = config.ModelName;
         ApiFormatIndex = config.Format == ApiFormat.OpenAI ? 0 : 1;
         PromptBeforeOverwrite = config.PromptBeforeOverwrite;
+        BatchSize = config.BatchSize > 0 ? config.BatchSize : 15;
+        SystemPrompt = config.SystemPrompt ?? "";
         OodleDllPath = config.OodleDllPath;
         UEPakTool.Core.Compression.OodleDllConfig.Path = config.OodleDllPath;
 
@@ -84,7 +102,9 @@ public partial class SettingsViewModel : ObservableObject
             ApiKey = ApiKey,
             ModelName = ModelName,
             Format = ApiFormatIndex == 0 ? ApiFormat.OpenAI : ApiFormat.Anthropic,
-            PromptBeforeOverwrite = PromptBeforeOverwrite
+            PromptBeforeOverwrite = PromptBeforeOverwrite,
+            BatchSize = BatchSize,
+            SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt
         };
         SettingsService.SaveAiConfig(config);
 

@@ -7,6 +7,8 @@ public class AiConfig
     public string ModelName { get; set; } = "gpt-4o";
     public ApiFormat Format { get; set; } = ApiFormat.OpenAI;
     public bool PromptBeforeOverwrite { get; set; }
+    public int BatchSize { get; set; } = 15;
+    public string? SystemPrompt { get; set; }
     public string OodleDllPath { get; set; } = "";
 }
 

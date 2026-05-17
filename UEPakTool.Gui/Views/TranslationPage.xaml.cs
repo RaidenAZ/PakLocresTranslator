@@ -89,10 +89,11 @@ public partial class TranslationPage : UserControl
     {
         row.Background = source switch
         {
+            TranslationSource.Empty => new SolidColorBrush(Color.FromRgb(0xFF, 0xEB, 0xEE)),
             TranslationSource.AiGenerated => new SolidColorBrush(Color.FromRgb(0xE3, 0xF2, 0xFD)),
             TranslationSource.ManuallyEntered => new SolidColorBrush(Color.FromRgb(0xE8, 0xF5, 0xE9)),
             TranslationSource.ManuallyEdited => new SolidColorBrush(Color.FromRgb(0xFF, 0xF3, 0xE0)),
-            _ => Brushes.White  // Empty / OriginalLocale
+            _ => Brushes.White  // OriginalLocale
         };
     }
 
