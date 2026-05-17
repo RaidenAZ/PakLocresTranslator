@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using UEPakTool.Gui.Models;
 using UEPakTool.Gui.Services;
+using Wpf.Ui.Controls;
 
 namespace UEPakTool.Gui.ViewModels;
 
@@ -39,8 +40,13 @@ public partial class SettingsViewModel : ObservableObject
     private string _connectionStatus = "";
 
     [ObservableProperty]
-    private System.Windows.Media.Brush _connectionDotColor =
-        System.Windows.Media.Brushes.Gray;
+    private string _connectionDetail = "";
+
+    [ObservableProperty]
+    private bool _connectionResultVisible;
+
+    [ObservableProperty]
+    private InfoBarSeverity _connectionSeverity = InfoBarSeverity.Success;
 
     [ObservableProperty]
     private string _newGlossarySource = "";
@@ -52,7 +58,7 @@ public partial class SettingsViewModel : ObservableObject
     public List<int> BatchSizeOptions { get; } = [5, 10, 15, 20, 30, 50];
     public string DefaultSystemPrompt => Core.Ai.PromptBuilder.GetDefaultTemplate();
 
-    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     [RelayCommand]
     private void ResetPrompt()
@@ -120,8 +126,7 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private async Task TestConnection()
     {
-        ConnectionDotColor = System.Windows.Media.Brushes.Gray;
-        ConnectionStatus = "测试中...";
+        ConnectionResultVisible = false;
 
         try
         {
@@ -157,37 +162,33 @@ public partial class SettingsViewModel : ObservableObject
 
             if (response.IsSuccessStatusCode)
             {
-                ConnectionDotColor = System.Windows.Media.Brushes.Green;
                 ConnectionStatus = "连接成功";
+                ConnectionDetail = $"API 响应正常";
+                ConnectionSeverity = InfoBarSeverity.Success;
             }
             else
             {
-                var errBody = await response.Content.ReadAsStringAsync();
-                ConnectionDotColor = System.Windows.Media.Brushes.OrangeRed;
-                ConnectionStatus = $"失败 HTTP {(int)response.StatusCode}";
-                ShowError($"HTTP {(int)response.StatusCode}", errBody);
+                ConnectionStatus = $"连接失败";
+                ConnectionDetail = $"HTTP {(int)response.StatusCode}";
+                ConnectionSeverity = InfoBarSeverity.Error;
             }
         }
         catch (TaskCanceledException)
         {
-            ConnectionDotColor = System.Windows.Media.Brushes.OrangeRed;
-            ConnectionStatus = "超时";
-            ShowError("连接超时", "API 请求在 30 秒内未响应");
+            ConnectionStatus = "连接超时";
+            ConnectionDetail = "请求在 10 秒内未响应，请检查 API URL 或网络";
+            ConnectionSeverity = InfoBarSeverity.Error;
         }
         catch (Exception ex)
         {
-            ConnectionDotColor = System.Windows.Media.Brushes.OrangeRed;
-            ConnectionStatus = "异常";
-            ShowError("连接异常", ex.Message);
+            ConnectionStatus = "连接异常";
+            ConnectionDetail = ex.Message;
+            ConnectionSeverity = InfoBarSeverity.Error;
         }
+
+        ConnectionResultVisible = true;
     }
 
-    private static void ShowError(string title, string detail)
-    {
-        var msg = detail.Length > 500 ? detail[..500] + "..." : detail;
-        System.Windows.MessageBox.Show($"错误: {title}\n\n{msg}", "连接测试失败",
-            System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-    }
 
     [RelayCommand]
     private void AddGlossaryEntry()

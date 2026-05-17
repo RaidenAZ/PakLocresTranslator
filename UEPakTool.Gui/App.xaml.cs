@@ -17,6 +17,7 @@ public partial class App : Application
             MessageBox.Show($"未处理的异常:\n{args.Exception.Message}\n\n详情已写入日志文件。", "程序错误",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
+            Shutdown();
         };
 
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
