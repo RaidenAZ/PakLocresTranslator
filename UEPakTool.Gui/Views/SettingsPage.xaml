@@ -58,6 +58,58 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 翻译设置 -->
+                <Border Margin="0,0,0,16"
+                        BorderBrush="{ui:ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8"
+                        Background="{ui:ThemeResource CardBackgroundFillColorDefaultBrush}">
+                    <StackPanel Margin="20">
+                        <TextBlock Text="翻译设置" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,12" />
+
+                        <!-- 每批翻译条数 -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="100" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="每批翻译条数" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" Margin="12,0,0,0"
+                                      ItemsSource="{Binding BatchSizeOptions}"
+                                      SelectedItem="{Binding BatchSize, Mode=TwoWay}" />
+                        </Grid>
+
+                        <!-- Prompt 模板 -->
+                        <DockPanel Margin="0,0,0,6">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <ui:Button Command="{Binding ResetPromptCommand}"
+                                        Appearance="Secondary" Content="恢复默认" ToolTip="清空自定义模板，使用内置默认 Prompt" />
+                            </StackPanel>
+                            <TextBlock Text="System Prompt 模板" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </DockPanel>
+
+                        <!-- 占位符提示 -->
+                        <Border Background="{ui:ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="10,8" Margin="0,0,0,8">
+                            <TextBlock TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{ui:ThemeResource TextFillColorSecondaryBrush}">
+                                <Bold>占位符说明：</Bold>
+                                <LineBreak />
+                                <Run Text="{}{glossary}" FontFamily="Consolas" /> — 自动替换为"术语表"中定义的专用名词映射
+                                <LineBreak />
+                                留空则使用内置默认 Prompt；修改后仅影响 System Prompt，JSON 输出格式由程序自动追加
+                            </TextBlock>
+                        </Border>
+
+                        <ui:TextBox Text="{Binding SystemPrompt, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                    MinHeight="120" MaxHeight="300"
+                                    AcceptsReturn="True"
+                                    TextWrapping="Wrap"
+                                    VerticalScrollBarVisibility="Auto"
+                                    PlaceholderText="留空使用默认 Prompt……" />
+                    </StackPanel>
+                </Border>
+
                 <!-- 术语表 -->
                 <Border BorderBrush="{ui:ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8"
