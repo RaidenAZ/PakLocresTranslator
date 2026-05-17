@@ -44,7 +44,7 @@ public partial class PakBrowserViewModel : ObservableObject
         var dialog = new OpenFileDialog
         {
             Title = "选择容器文件",
-            Filter = "PAK / IoStore (*.pak;*.utoc)|*.pak;*.utoc|PAK 文件 (*.pak)|*.pak|IoStore TOC (*.utoc)|*.utoc|所有文件 (*.*)|*.*"
+            Filter = "PAK 文件 (*.pak)|*.pak|所有文件 (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -70,9 +70,11 @@ public partial class PakBrowserViewModel : ObservableObject
 
             string ext = Path.GetExtension(path).ToLowerInvariant();
             if (ext == ".utoc")
-                LoadIoStore(path);
-            else
-                LoadPak(path);
+            {
+                StatusText = "IoStore 暂不支持，请使用 PAK 文件";
+                return;
+            }
+            LoadPak(path);
         }
         catch (Exception ex)
         {
