@@ -19,7 +19,7 @@
         <!-- 标题行 -->
         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
             <ui:SymbolIcon Symbol="Box20" FontSize="24" Margin="0,0,12,0" />
-            <TextBlock Text="PAK 文件浏览" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="Locres文件浏览" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center" />
         </StackPanel>
 
         <!-- 工具栏 -->
@@ -29,7 +29,7 @@
                     Appearance="Primary"
                     Icon="{ui:SymbolIcon Open20}"
                     Height="36" Padding="16,0">
-                打开 PAK / IoStore
+                打开 Pak / IoStore
             </ui:Button>
             <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Margin="12,0,0,0" Opacity="0.7" />
         </StackPanel>

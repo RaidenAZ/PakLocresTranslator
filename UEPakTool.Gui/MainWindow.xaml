@@ -35,7 +35,7 @@
                            IsBackButtonVisible="Collapsed"
                            BorderThickness="0">
             <ui:NavigationView.MenuItems>
-                <ui:NavigationViewItem Content="PAK 浏览"
+                <ui:NavigationViewItem Content="文件浏览"
                                        Icon="{ui:SymbolIcon Box24}"
                                        Tag="pak"
                                        Click="NavItem_Click" />

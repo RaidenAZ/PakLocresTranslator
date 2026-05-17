@@ -97,7 +97,7 @@
                                 <LineBreak />
                                 <Run Text="{}{glossary}" FontFamily="Consolas" /> — 自动替换为"术语表"中定义的专用名词映射
                                 <LineBreak />
-                                留空则使用内置默认 Prompt；修改后仅影响 System Prompt，JSON 输出格式由程序自动追加
+                                输入框留空则使用内置默认 Prompt；修改后仅影响 System Prompt，请勿设置要求LLM指定输出格式，这会影响程序对结果接收的识别，导致AI翻译无法传递到页面上。
                             </TextBlock>
                         </Border>
 
