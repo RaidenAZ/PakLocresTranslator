@@ -25,7 +25,7 @@ public static class AesDecryptor
 
     public static byte[] DecryptSafe(byte[] data, FAesKey key)
     {
-        var aligned = Align(data.Length, ALIGN);
+        var aligned = AlignHelper.Align(data.Length, ALIGN);
         if (aligned == data.Length)
             return Decrypt(data, key);
 
@@ -33,9 +33,6 @@ public static class AesDecryptor
         Buffer.BlockCopy(data, 0, padded, 0, data.Length);
         return Decrypt(padded, key);
     }
-
-    private static int Align(int value, int alignment) =>
-        (value + alignment - 1) & ~(alignment - 1);
 
     public static bool IsValidIndex(byte[] data)
     {

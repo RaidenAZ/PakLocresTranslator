@@ -1,5 +1,4 @@
 using System.IO;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 
@@ -11,12 +10,12 @@ public class OpenAiClient
 
     public OpenAiClient(HttpClient http) => _http = http;
 
-    /// <summary>
-    /// 批量翻译，返回 key→translated 字典
-    /// </summary>
     public async Task<Dictionary<string, string>> TranslateBatchAsync(
         List<(string Key, string Original)> entries,
-        AiConfig config,
+        string apiUrl,
+        string apiKey,
+        string modelName,
+        ApiFormat format,
         List<(string Source, string Target)> glossary,
         string? systemPromptOverride = null,
         CancellationToken cancellation = default)
@@ -24,29 +23,140 @@ public class OpenAiClient
         var systemPrompt = PromptBuilder.BuildSystemPrompt(glossary, systemPromptOverride);
         var userPrompt = PromptBuilder.BuildUserPrompt(entries);
 
-        var body = new
-        {
-            model = config.ModelName,
-            messages = new object[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userPrompt }
-            }
-        };
+        var (endpoint, body) = format == ApiFormat.Anthropic
+            ? BuildAnthropicRequest(modelName, systemPrompt, userPrompt)
+            : BuildOpenAiRequest(modelName, systemPrompt, userPrompt);
 
         var request = new HttpRequestMessage(HttpMethod.Post,
-            $"{config.ApiUrl.TrimEnd('/')}/chat/completions")
+            $"{apiUrl.TrimEnd('/')}{endpoint}")
         {
             Content = new StringContent(JsonSerializer.Serialize(body),
                 Encoding.UTF8, "application/json")
         };
-        request.Headers.Add("Authorization", $"Bearer {config.ApiKey}");
+
+        if (format == ApiFormat.Anthropic)
+        {
+            request.Headers.Add("x-api-key", apiKey);
+            request.Headers.Add("anthropic-version", "2023-06-01");
+        }
+        else
+        {
+            request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        }
 
         var response = await _http.SendAsync(request, cancellation);
         response.EnsureSuccessStatusCode();
 
         var raw = await response.Content.ReadAsStringAsync(cancellation);
-        // Write response to log file for debugging
+        LogResponse(raw);
+
+        var content = ExtractContent(raw, format);
+        return ParseBatchResponse(content, entries);
+    }
+
+    public async Task<string> TranslateSingleAsync(
+        string original,
+        string apiUrl,
+        string apiKey,
+        string modelName,
+        ApiFormat format,
+        CancellationToken cancellation = default)
+    {
+        var (endpoint, body) = format == ApiFormat.Anthropic
+            ? BuildAnthropicSingleRequest(modelName, original)
+            : BuildOpenAiSingleRequest(modelName, original);
+
+        var request = new HttpRequestMessage(HttpMethod.Post,
+            $"{apiUrl.TrimEnd('/')}{endpoint}")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body),
+                Encoding.UTF8, "application/json")
+        };
+
+        if (format == ApiFormat.Anthropic)
+        {
+            request.Headers.Add("x-api-key", apiKey);
+            request.Headers.Add("anthropic-version", "2023-06-01");
+        }
+        else
+        {
+            request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        }
+
+        var response = await _http.SendAsync(request, cancellation);
+        response.EnsureSuccessStatusCode();
+
+        var raw = await response.Content.ReadAsStringAsync(cancellation);
+        return ExtractContent(raw, format).Trim();
+    }
+
+    // ──── OpenAI request builders ────
+
+    private static (string endpoint, object body) BuildOpenAiRequest(
+        string model, string system, string user) =>
+        ("/chat/completions", new
+        {
+            model,
+            messages = new object[]
+            {
+                new { role = "system", content = system },
+                new { role = "user", content = user }
+            }
+        });
+
+    private static (string endpoint, object body) BuildOpenAiSingleRequest(
+        string model, string original) =>
+        ("/chat/completions", new
+        {
+            model,
+            messages = new object[]
+            {
+                new { role = "user", content = $"翻译为简体中文，只输出译文：\n{original}" }
+            }
+        });
+
+    // ──── Anthropic request builders ────
+
+    private static (string endpoint, object body) BuildAnthropicRequest(
+        string model, string system, string user) =>
+        ("/messages", new
+        {
+            model,
+            max_tokens = 4096,
+            system,
+            messages = new[] { new { role = "user", content = user } }
+        });
+
+    private static (string endpoint, object body) BuildAnthropicSingleRequest(
+        string model, string original) =>
+        ("/messages", new
+        {
+            model,
+            max_tokens = 4096,
+            messages = new[] { new { role = "user", content = $"翻译为简体中文，只输出译文：\n{original}" } }
+        });
+
+    // ──── Content extraction ────
+
+    private static string ExtractContent(string raw, ApiFormat format)
+    {
+        using var doc = JsonDocument.Parse(raw);
+        return format == ApiFormat.Anthropic
+            ? doc.RootElement
+                .GetProperty("content")[0]
+                .GetProperty("text")
+                .GetString()!
+            : doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString()!;
+    }
+
+    // ──── Logging ────
+
+    private static void LogResponse(string raw)
+    {
         try
         {
             var logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config", "Logs");
@@ -54,63 +164,19 @@ public class OpenAiClient
             File.WriteAllText(Path.Combine(logDir, $"batch-response-{DateTime.Now:HHmmss}.txt"), raw);
         }
         catch { }
-
-        // 先解析 API 响应，提取 choices[0].message.content
-        using var doc = JsonDocument.Parse(raw);
-        var content = doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString()!;
-
-        return ParseBatchResponse(content, entries);
     }
 
-    /// <summary>
-    /// 逐条翻译（fallback 或小批量）
-    /// </summary>
-    public async Task<string> TranslateSingleAsync(
-        string original,
-        AiConfig config,
-        CancellationToken cancellation = default)
-    {
-        var body = new
-        {
-            model = config.ModelName,
-            messages = new object[]
-            {
-                new { role = "user", content = $"翻译为简体中文，只输出译文：\n{original}" }
-            }
-        };
-
-        var request = new HttpRequestMessage(HttpMethod.Post,
-            $"{config.ApiUrl.TrimEnd('/')}/chat/completions")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(body),
-                Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("Authorization", $"Bearer {config.ApiKey}");
-
-        var response = await _http.SendAsync(request, cancellation);
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadFromJsonAsync<JsonElement>(cancellation);
-        return json.GetProperty("choices")[0].GetProperty("message")
-            .GetProperty("content").GetString()!.Trim();
-    }
+    // ──── JSON parsing ────
 
     private static Dictionary<string, string> ParseBatchResponse(
         string content, List<(string Key, string Original)> entries)
     {
         var result = new Dictionary<string, string>();
-
-        // 去掉 markdown 和空白
         var cleaned = content
             .Replace("```json", "")
             .Replace("```", "")
             .Trim();
 
-        // 尝试提取 JSON 数组
         var start = cleaned.IndexOf('[');
         var end = cleaned.LastIndexOf(']');
         if (start < 0 || end <= start)
@@ -127,7 +193,6 @@ public class OpenAiClient
                 !item.TryGetProperty("t", out var tEl))
                 continue;
 
-            // k 可能是数字或字符串
             int idx;
             if (kEl.ValueKind == JsonValueKind.Number)
                 idx = kEl.GetInt32();

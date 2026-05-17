@@ -80,7 +80,7 @@ public partial class SettingsViewModel : ObservableObject
         ApiUrl = config.ApiUrl;
         ApiKey = config.ApiKey;
         ModelName = config.ModelName;
-        ApiFormatIndex = config.Format == ApiFormat.OpenAI ? 0 : 1;
+        ApiFormatIndex = config.Format == Core.Ai.ApiFormat.OpenAI ? 0 : 1;
         PromptBeforeOverwrite = config.PromptBeforeOverwrite;
         BatchSize = config.BatchSize > 0 ? config.BatchSize : 15;
         SystemPrompt = config.SystemPrompt ?? "";
@@ -101,7 +101,8 @@ public partial class SettingsViewModel : ObservableObject
             ApiUrl = ApiUrl,
             ApiKey = ApiKey,
             ModelName = ModelName,
-            Format = ApiFormatIndex == 0 ? ApiFormat.OpenAI : ApiFormat.Anthropic,
+            Format = ApiFormatIndex == 0
+                ? Core.Ai.ApiFormat.OpenAI : Core.Ai.ApiFormat.Anthropic,
             PromptBeforeOverwrite = PromptBeforeOverwrite,
             BatchSize = BatchSize,
             SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt
@@ -209,12 +210,4 @@ public partial class SettingsViewModel : ObservableObject
         if (entry != null) GlossaryEntries.Remove(entry);
     }
 
-    private static async Task ShowErrorDialog(string title, string message)
-    {
-        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-        {
-            System.Windows.MessageBox.Show(message, title,
-                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-        });
-    }
 }

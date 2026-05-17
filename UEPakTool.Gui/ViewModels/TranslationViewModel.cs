@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json;
+using System.Windows.Threading;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -273,120 +274,16 @@ public partial class TranslationViewModel : ObservableObject
             var glossary = SettingsService.LoadGlossary()
                 .Select(g => (g.Source, g.Target)).ToList();
 
-            var aiConfig = new Core.Ai.AiConfig
-            {
-                ApiUrl = config.ApiUrl,
-                ApiKey = config.ApiKey,
-                ModelName = config.ModelName,
-                Format = config.Format == Gui.Models.ApiFormat.OpenAI
-                    ? Core.Ai.ApiFormat.OpenAI : Core.Ai.ApiFormat.Anthropic
-            };
-
-            // 筛选要翻译的条目
-            var toTranslate = new List<(string Key, string Original)>();
-            foreach (var r in Records)
-            {
-                if (r.Source is TranslationSource.ManuallyEntered or TranslationSource.ManuallyEdited)
-                    continue;
-                if (r.Source == TranslationSource.AiGenerated && config.PromptBeforeOverwrite)
-                    continue;
-                toTranslate.Add((r.DisplayKey, r.Original));
-            }
-
+            var toTranslate = GetEntriesToTranslate(config);
             if (toTranslate.Count == 0)
             {
                 StatusText = "没有需要翻译的条目";
                 return;
             }
 
-            var dispatcher = Application.Current.Dispatcher;
-            var token = _translateCts.Token;
-            int batchSize = config.BatchSize > 0 ? config.BatchSize : 15;
+            var done = await RunBatchTranslationAsync(toTranslate, config, glossary, _translateCts.Token);
 
-            var done = await Task.Run(async () =>
-            {
-                using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-                var client = new Core.Ai.OpenAiClient(http);
-                int count = 0;
-
-                for (int batchStart = 0; batchStart < toTranslate.Count; batchStart += batchSize)
-                {
-                    token.ThrowIfCancellationRequested();
-
-                    var batch = toTranslate.Skip(batchStart).Take(batchSize).ToList();
-                    var batchNum = batchStart / batchSize + 1;
-                    var totalBatches = (toTranslate.Count + batchSize - 1) / batchSize;
-
-                    dispatcher.Invoke(() =>
-                    {
-                        StatusText = $"翻译中... 第{batchNum}/{totalBatches}批 ({batchStart + 1}-{batchStart + batch.Count}/{toTranslate.Count})";
-                        TranslationProgress = (int)(batchStart * 100.0 / toTranslate.Count);
-                    });
-
-                    Dictionary<string, string> batchResults;
-                    try
-                    {
-                        batchResults = await client.TranslateBatchAsync(
-                            batch, aiConfig, glossary, config.SystemPrompt, token);
-                    }
-                    catch (FormatException fe)
-                    {
-                        // JSON 解析失败，降级为逐条
-                        System.Diagnostics.Debug.WriteLine($"Batch parse failed: {fe.Message}");
-                        batchResults = new Dictionary<string, string>();
-                        foreach (var (k, o) in batch)
-                        {
-                            token.ThrowIfCancellationRequested();
-                            try
-                            {
-                                var t = await client.TranslateSingleAsync(o, aiConfig, token);
-                                t = GlossaryPostProcessor.ApplySingle(t, glossary);
-                                if (!string.IsNullOrWhiteSpace(t)) batchResults[k] = t;
-                            }
-                            catch (Exception ex)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"Single fallback failed: {ex.Message}");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Batch HTTP error: {ex.Message}");
-                        batchResults = new Dictionary<string, string>();
-                    }
-
-                    // 后处理 + 写回
-                    foreach (var kv in batchResults)
-                    {
-                        var translated = GlossaryPostProcessor.ApplySingle(kv.Value, glossary);
-                        if (string.IsNullOrWhiteSpace(translated)) continue;
-
-                        dispatcher.Invoke(() =>
-                        {
-                            var record = Records.FirstOrDefault(r => r.DisplayKey == kv.Key);
-                            if (record != null)
-                            {
-                                record.Translated = translated;
-                                record.Source = TranslationSource.AiGenerated;
-                            }
-                        });
-                        count++;
-                    }
-
-                    var progressDone = Math.Min(batchStart + batchSize, toTranslate.Count);
-                    dispatcher.Invoke(() =>
-                    {
-                        TranslationProgress = (int)(progressDone * 100.0 / toTranslate.Count);
-                    });
-                }
-
-                return count;
-            }, token);
-
-            dispatcher.Invoke(() =>
-            {
-                StatusText = $"翻译完成：{done} 条";
-            });
+            StatusText = $"翻译完成：{done} 条";
         }
         catch (OperationCanceledException)
         {
@@ -410,6 +307,131 @@ public partial class TranslationViewModel : ObservableObject
             _translateCts?.Dispose();
             _translateCts = null;
         }
+    }
+
+    private List<(string Key, string Original)> GetEntriesToTranslate(AiConfig config)
+    {
+        var list = new List<(string Key, string Original)>();
+        foreach (var r in Records)
+        {
+            if (r.Source is TranslationSource.ManuallyEntered or TranslationSource.ManuallyEdited)
+                continue;
+            if (r.Source == TranslationSource.AiGenerated && config.PromptBeforeOverwrite)
+                continue;
+            list.Add((r.DisplayKey, r.Original));
+        }
+        return list;
+    }
+
+    private async Task<int> RunBatchTranslationAsync(
+        List<(string Key, string Original)> toTranslate,
+        AiConfig config,
+        List<(string Source, string Target)> glossary,
+        CancellationToken token)
+    {
+        var dispatcher = Application.Current.Dispatcher;
+        int batchSize = config.BatchSize > 0 ? config.BatchSize : 15;
+
+        return await Task.Run(async () =>
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            var client = new Core.Ai.OpenAiClient(http);
+            int count = 0;
+
+            for (int batchStart = 0; batchStart < toTranslate.Count; batchStart += batchSize)
+            {
+                token.ThrowIfCancellationRequested();
+
+                var batch = toTranslate.Skip(batchStart).Take(batchSize).ToList();
+                var batchNum = batchStart / batchSize + 1;
+                var totalBatches = (toTranslate.Count + batchSize - 1) / batchSize;
+
+                dispatcher.Invoke(() =>
+                {
+                    StatusText = $"翻译中... 第{batchNum}/{totalBatches}批 ({batchStart + 1}-{batchStart + batch.Count}/{toTranslate.Count})";
+                    TranslationProgress = (int)(batchStart * 100.0 / toTranslate.Count);
+                });
+
+                var batchResults = await TranslateBatchWithFallback(client, batch, config, glossary, token);
+                count += ApplyBatchResults(dispatcher, batchResults, glossary);
+
+                var done = Math.Min(batchStart + batchSize, toTranslate.Count);
+                dispatcher.Invoke(() => TranslationProgress = (int)(done * 100.0 / toTranslate.Count));
+            }
+
+            return count;
+        }, token);
+    }
+
+    private async Task<Dictionary<string, string>> TranslateBatchWithFallback(
+        Core.Ai.OpenAiClient client,
+        List<(string Key, string Original)> batch,
+        AiConfig config,
+        List<(string Source, string Target)> glossary,
+        CancellationToken token)
+    {
+        try
+        {
+            return await client.TranslateBatchAsync(
+                batch, config.ApiUrl, config.ApiKey, config.ModelName,
+                config.Format, glossary, config.SystemPrompt, token);
+        }
+        catch (FormatException)
+        {
+            return await FallbackSingleTranslate(client, batch, config, glossary, token);
+        }
+        catch (Exception)
+        {
+            return new Dictionary<string, string>();
+        }
+    }
+
+    private async Task<Dictionary<string, string>> FallbackSingleTranslate(
+        Core.Ai.OpenAiClient client,
+        List<(string Key, string Original)> batch,
+        AiConfig config,
+        List<(string Source, string Target)> glossary,
+        CancellationToken token)
+    {
+        var results = new Dictionary<string, string>();
+        foreach (var (k, o) in batch)
+        {
+            token.ThrowIfCancellationRequested();
+            try
+            {
+                var t = await client.TranslateSingleAsync(o,
+                    config.ApiUrl, config.ApiKey, config.ModelName,
+                    config.Format, token);
+                t = GlossaryPostProcessor.ApplySingle(t, glossary);
+                if (!string.IsNullOrWhiteSpace(t)) results[k] = t;
+            }
+            catch { }
+        }
+        return results;
+    }
+
+    private int ApplyBatchResults(Dispatcher dispatcher,
+        Dictionary<string, string> batchResults,
+        List<(string Source, string Target)> glossary)
+    {
+        int count = 0;
+        foreach (var kv in batchResults)
+        {
+            var translated = GlossaryPostProcessor.ApplySingle(kv.Value, glossary);
+            if (string.IsNullOrWhiteSpace(translated)) continue;
+
+            dispatcher.Invoke(() =>
+            {
+                var record = Records.FirstOrDefault(r => r.DisplayKey == kv.Key);
+                if (record != null)
+                {
+                    record.Translated = translated;
+                    record.Source = TranslationSource.AiGenerated;
+                }
+            });
+            count++;
+        }
+        return count;
     }
 
     [RelayCommand]
@@ -533,21 +555,4 @@ public partial class TranslationViewModel : ObservableObject
         StatusText = $"共 {TotalCount} 条 | 已翻译 {TranslatedCount} | 待翻译 {TotalCount - TranslatedCount}";
     }
 
-    private static string[] ParseCsvLine(string line)
-    {
-        var result = new List<string>();
-        bool inQuotes = false;
-        int start = 0;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == '"') inQuotes = !inQuotes;
-            else if (line[i] == ',' && !inQuotes)
-            {
-                result.Add(line[start..i].Trim('"'));
-                start = i + 1;
-            }
-        }
-        result.Add(line[start..].Trim('"'));
-        return result.ToArray();
-    }
 }

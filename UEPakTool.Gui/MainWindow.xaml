@@ -25,7 +25,7 @@
         </Grid.ColumnDefinitions>
 
         <ui:TitleBar Grid.Row="0" Grid.ColumnSpan="2"
-                     Title="TSW 本地化工具 v1.3 (UE4.26 + UE5)" />
+                     Title="UE Pak本地化工具 v1.4" />
 
         <ui:NavigationView x:Name="NavView"
                            Grid.Row="1" Grid.Column="0"
