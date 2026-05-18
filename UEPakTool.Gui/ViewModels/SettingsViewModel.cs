@@ -58,6 +58,7 @@ public partial class SettingsViewModel : ObservableObject
     public List<int> BatchSizeOptions { get; } = [5, 10, 15, 20, 30, 50];
     public string DefaultSystemPrompt => Core.Ai.PromptBuilder.GetDefaultTemplate();
 
+    private readonly ISettingsService _settings = new SettingsService();
     private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     [RelayCommand]
@@ -82,7 +83,7 @@ public partial class SettingsViewModel : ObservableObject
 
     public void Load()
     {
-        var config = SettingsService.LoadAiConfig();
+        var config = _settings.LoadAiConfig();
         ApiUrl = config.ApiUrl;
         ApiKey = config.ApiKey;
         ModelName = config.ModelName;
@@ -93,7 +94,7 @@ public partial class SettingsViewModel : ObservableObject
         OodleDllPath = config.OodleDllPath;
         UEPakTool.Core.Compression.OodleDllConfig.Path = config.OodleDllPath;
 
-        var glossary = SettingsService.LoadGlossary();
+        var glossary = _settings.LoadGlossary();
         GlossaryEntries.Clear();
         foreach (var g in glossary) GlossaryEntries.Add(g);
 
@@ -113,14 +114,14 @@ public partial class SettingsViewModel : ObservableObject
             BatchSize = BatchSize,
             SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt
         };
-        SettingsService.SaveAiConfig(config);
+        _settings.SaveAiConfig(config);
 
         var glossary = GlossaryEntries.Select(g => new GlossaryEntry
         {
             Source = g.Source,
             Target = g.Target,
         }).ToList();
-        SettingsService.SaveGlossary(glossary);
+        _settings.SaveGlossary(glossary);
     }
 
     [RelayCommand]

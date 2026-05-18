@@ -8,6 +8,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using UEPakTool.Gui.Helpers;
 using UEPakTool.Core;
 using UEPakTool.Core.Ai;
 using UEPakTool.Core.Container;
@@ -54,6 +55,7 @@ public partial class TranslationViewModel : ObservableObject
     private List<object> _entryTags = [];
     private List<int> _matchIndices = [];
     private CancellationTokenSource? _translateCts;
+    private ISettingsService _settings = new SettingsService();
 
     partial void OnSearchTextChanged(string value)
     {
@@ -262,7 +264,7 @@ public partial class TranslationViewModel : ObservableObject
         try
         {
             _translateCts = new CancellationTokenSource();
-            var config = SettingsService.LoadAiConfig();
+            var config = _settings.LoadAiConfig();
 
             if (string.IsNullOrWhiteSpace(config.ApiUrl))
             {
@@ -271,7 +273,7 @@ public partial class TranslationViewModel : ObservableObject
                 return;
             }
 
-            var glossary = SettingsService.LoadGlossary()
+            var glossary = _settings.LoadGlossary()
                 .Select(g => (g.Source, g.Target)).ToList();
 
             var toTranslate = GetEntriesToTranslate(config);
@@ -292,14 +294,12 @@ public partial class TranslationViewModel : ObservableObject
         catch (HttpRequestException ex)
         {
             StatusText = $"网络错误: {ex.Message}";
-            MessageBox.Show($"API 请求失败：{ex.Message}", "翻译错误",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ErrorHelper.Show("API 请求失败", ex);
         }
         catch (Exception ex)
         {
             StatusText = $"翻译异常: {ex.Message}";
-            MessageBox.Show($"翻译过程出错：{ex.Message}", "翻译错误",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ErrorHelper.Show("翻译过程出错", ex);
         }
         finally
         {
@@ -505,8 +505,7 @@ public partial class TranslationViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"保存失败: {ex.Message}", "错误",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ErrorHelper.Show("保存容器 locres 失败", ex);
         }
     }
 
@@ -543,8 +542,7 @@ public partial class TranslationViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"保存失败: {ex.Message}", "错误",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ErrorHelper.Show("保存 locres 失败", ex);
         }
     }
 

@@ -7,6 +7,7 @@ using Microsoft.Win32;
 using UEPakTool.Core.Compression;
 using UEPakTool.Core.Container;
 using UEPakTool.Core.Encryption;
+using UEPakTool.Gui.Helpers;
 using UEPakTool.Core.IoStore;
 using UEPakTool.Core.Pak;
 using UEPakTool.Gui.Models;
@@ -44,7 +45,7 @@ public partial class PakBrowserViewModel : ObservableObject
         var dialog = new OpenFileDialog
         {
             Title = "选择容器文件",
-            Filter = "PAK 文件 (*.pak)|*.pak|所有文件 (*.*)|*.*"
+            Filter = "Pak 文件 (*.pak)|*.pak|所有文件 (*.*)|*.*"
         };
 
         if (dialog.ShowDialog() == true)
@@ -71,7 +72,7 @@ public partial class PakBrowserViewModel : ObservableObject
             string ext = Path.GetExtension(path).ToLowerInvariant();
             if (ext == ".utoc")
             {
-                StatusText = "IoStore 暂不支持，请使用 PAK 文件";
+                StatusText = "IoStore 暂不支持，请使用 Pak 文件";
                 return;
             }
             LoadPak(path);
@@ -79,8 +80,7 @@ public partial class PakBrowserViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusText = $"加载失败: {ex.Message}";
-            MessageBox.Show($"加载容器失败:\n{ex.Message}", "错误",
-                MessageBoxButton.OK, MessageBoxImage.Error);
+            ErrorHelper.Show("加载容器失败", ex);
         }
     }
 
@@ -97,7 +97,7 @@ public partial class PakBrowserViewModel : ObservableObject
                 aesKey = PromptForAesKey();
                 if (aesKey == null)
                 {
-                    StatusText = "已取消：需要 AES 密钥才能加载加密 PAK";
+                    StatusText = "已取消：需要 AES 密钥才能加载加密 Pak";
                     return;
                 }
             }

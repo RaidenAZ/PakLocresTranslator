@@ -1,4 +1,3 @@
-using System.IO;
 using System.Text;
 using System.Text.Json;
 
@@ -48,7 +47,6 @@ public class OpenAiClient
         response.EnsureSuccessStatusCode();
 
         var raw = await response.Content.ReadAsStringAsync(cancellation);
-        LogResponse(raw);
 
         var content = ExtractContent(raw, format);
         return ParseBatchResponse(content, entries);
