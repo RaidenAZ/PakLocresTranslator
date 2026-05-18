@@ -20,6 +20,7 @@ obj/
 *.runtimeconfig.json
 
 # Design docs (internal)
+docs/
 *.md
 !README.md
 
@@ -46,6 +47,3 @@ packages/
 
 # Test projects
 UEPakTool.Test/
-
-# Generated icon
-icon.ico

@@ -45,7 +45,7 @@ public class PakFooter
     public static PakFooter Read(Stream stream)
     {
         if (stream.Length < 44)
-            throw new InvalidDataException("文件太小，不是有效的 PAK 文件");
+            throw new InvalidDataException("文件太小，不是有效的Pak文件");
 
         // 按优先级尝试不同的 footer 大小（最多 5 个压缩方法，共 221 字节）
         int[] sizesToTry = { 221, 222, 189, 157, 125, 93, 61 };
@@ -67,7 +67,7 @@ public class PakFooter
             if (result != null) return result;
         }
 
-        throw new InvalidDataException($"无效的 PAK 魔数，不是支持的 PAK 文件格式");
+        throw new InvalidDataException($"无效的Pak魔数，不是支持的Pak文件格式");
     }
 
     private static PakFooter? TryRead(Stream stream, int footerSize, bool expectNewFields)

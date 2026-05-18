@@ -4,16 +4,23 @@ using UEPakTool.Gui.Models;
 
 namespace UEPakTool.Gui.Services;
 
-public class SettingsService
+public class SettingsService : ISettingsService
 {
-    private static readonly string ConfigDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config");
+    private readonly string _configDir;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public static void EnsureConfigDir() => Directory.CreateDirectory(ConfigDir);
-
-    public static AiConfig LoadAiConfig()
+    public SettingsService() : this(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config"))
     {
-        var path = Path.Combine(ConfigDir, "ai-config.json");
+    }
+
+    public SettingsService(string configDir)
+    {
+        _configDir = configDir;
+    }
+
+    public AiConfig LoadAiConfig()
+    {
+        var path = Path.Combine(_configDir, "ai-config.json");
         if (File.Exists(path))
         {
             var json = File.ReadAllText(path);
@@ -22,16 +29,16 @@ public class SettingsService
         return new AiConfig();
     }
 
-    public static void SaveAiConfig(AiConfig config)
+    public void SaveAiConfig(AiConfig config)
     {
         EnsureConfigDir();
-        File.WriteAllText(Path.Combine(ConfigDir, "ai-config.json"),
+        File.WriteAllText(Path.Combine(_configDir, "ai-config.json"),
             JsonSerializer.Serialize(config, JsonOptions));
     }
 
-    public static List<GlossaryEntry> LoadGlossary()
+    public List<GlossaryEntry> LoadGlossary()
     {
-        var path = Path.Combine(ConfigDir, "glossary.json");
+        var path = Path.Combine(_configDir, "glossary.json");
         if (File.Exists(path))
         {
             var json = File.ReadAllText(path);
@@ -40,10 +47,12 @@ public class SettingsService
         return [];
     }
 
-    public static void SaveGlossary(List<GlossaryEntry> glossary)
+    public void SaveGlossary(List<GlossaryEntry> glossary)
     {
         EnsureConfigDir();
-        File.WriteAllText(Path.Combine(ConfigDir, "glossary.json"),
+        File.WriteAllText(Path.Combine(_configDir, "glossary.json"),
             JsonSerializer.Serialize(glossary, JsonOptions));
     }
+
+    private void EnsureConfigDir() => Directory.CreateDirectory(_configDir);
 }

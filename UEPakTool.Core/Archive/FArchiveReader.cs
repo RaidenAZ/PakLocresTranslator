@@ -28,12 +28,7 @@ public class FArchiveReader : IDisposable
     public int ReadInt32() => _reader.ReadInt32();
     public uint ReadUInt32() => _reader.ReadUInt32();
     public long ReadInt64() => _reader.ReadInt64();
-    public ulong ReadUInt64() => _reader.ReadUInt64();
-    public short ReadInt16() => _reader.ReadInt16();
-    public ushort ReadUInt16() => _reader.ReadUInt16();
     public byte ReadByte() => _reader.ReadByte();
-    public bool ReadBool() => _reader.ReadByte() != 0;
-    public float ReadFloat() => _reader.ReadSingle();
     public byte[] ReadBytes(int count) => _reader.ReadBytes(count);
 
     // ──── FString ────
@@ -62,28 +57,6 @@ public class FArchiveReader : IDisposable
                 result = result.Substring(0, result.Length - 1);
             return result;
         }
-    }
-
-    // ──── TArray<T> ────
-
-    public int ReadArrayLength() => ReadInt32();
-
-    public List<string> ReadStringArray()
-    {
-        int count = ReadArrayLength();
-        var list = new List<string>(count);
-        for (int i = 0; i < count; i++)
-            list.Add(ReadFString());
-        return list;
-    }
-
-    public T[] ReadArray<T>(Func<FArchiveReader, T> elementReader)
-    {
-        int count = ReadArrayLength();
-        var array = new T[count];
-        for (int i = 0; i < count; i++)
-            array[i] = elementReader(this);
-        return array;
     }
 
     public void Dispose()
