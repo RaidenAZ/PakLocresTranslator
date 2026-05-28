@@ -22,9 +22,7 @@ public class OpenAiClient
         var systemPrompt = PromptBuilder.BuildSystemPrompt(glossary, systemPromptOverride);
         var userPrompt = PromptBuilder.BuildUserPrompt(entries);
 
-        var (endpoint, body) = format == ApiFormat.Anthropic
-            ? BuildAnthropicRequest(modelName, systemPrompt, userPrompt)
-            : BuildOpenAiRequest(modelName, systemPrompt, userPrompt);
+        var (endpoint, body) = BuildRequest(format, modelName, systemPrompt, userPrompt);
 
         var request = new HttpRequestMessage(HttpMethod.Post,
             $"{apiUrl.TrimEnd('/')}{endpoint}")
@@ -60,9 +58,7 @@ public class OpenAiClient
         ApiFormat format,
         CancellationToken cancellation = default)
     {
-        var (endpoint, body) = format == ApiFormat.Anthropic
-            ? BuildAnthropicSingleRequest(modelName, original)
-            : BuildOpenAiSingleRequest(modelName, original);
+        var (endpoint, body) = BuildSingleRequest(format, modelName, original);
 
         var request = new HttpRequestMessage(HttpMethod.Post,
             $"{apiUrl.TrimEnd('/')}{endpoint}")
@@ -90,6 +86,24 @@ public class OpenAiClient
 
     // ──── OpenAI request builders ────
 
+    private static (string endpoint, object body) BuildRequest(
+        ApiFormat format, string model, string system, string user) =>
+        format switch
+        {
+            ApiFormat.Anthropic => BuildAnthropicRequest(model, system, user),
+            ApiFormat.OpenAIResponses => BuildOpenAiResponsesRequest(model, system, user),
+            _ => BuildOpenAiRequest(model, system, user)
+        };
+
+    private static (string endpoint, object body) BuildSingleRequest(
+        ApiFormat format, string model, string original) =>
+        format switch
+        {
+            ApiFormat.Anthropic => BuildAnthropicSingleRequest(model, original),
+            ApiFormat.OpenAIResponses => BuildOpenAiResponsesSingleRequest(model, original),
+            _ => BuildOpenAiSingleRequest(model, original)
+        };
+
     private static (string endpoint, object body) BuildOpenAiRequest(
         string model, string system, string user) =>
         ("/chat/completions", new
@@ -100,6 +114,23 @@ public class OpenAiClient
                 new { role = "system", content = system },
                 new { role = "user", content = user }
             }
+        });
+
+    private static (string endpoint, object body) BuildOpenAiResponsesRequest(
+        string model, string system, string user) =>
+        ("/responses", new
+        {
+            model,
+            instructions = system,
+            input = user
+        });
+
+    private static (string endpoint, object body) BuildOpenAiResponsesSingleRequest(
+        string model, string original) =>
+        ("/responses", new
+        {
+            model,
+            input = $"翻译为简体中文，只输出译文：\n{original}"
         });
 
     private static (string endpoint, object body) BuildOpenAiSingleRequest(
@@ -139,29 +170,62 @@ public class OpenAiClient
     private static string ExtractContent(string raw, ApiFormat format)
     {
         using var doc = JsonDocument.Parse(raw);
-        return format == ApiFormat.Anthropic
-            ? doc.RootElement
-                .GetProperty("content")[0]
-                .GetProperty("text")
-                .GetString()!
-            : doc.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString()!;
+        return format switch
+        {
+            ApiFormat.Anthropic => ExtractAnthropicContent(doc.RootElement),
+            ApiFormat.OpenAIResponses => ExtractOpenAiResponsesContent(doc.RootElement),
+            _ => ExtractOpenAiChatContent(doc.RootElement)
+        };
     }
 
-    // ──── Logging ────
+    private static string ExtractAnthropicContent(JsonElement root) =>
+        root.GetProperty("content")[0].GetProperty("text").GetString()!;
 
-    private static void LogResponse(string raw)
+    private static string ExtractOpenAiChatContent(JsonElement root) =>
+        root.GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString()!;
+
+    private static string ExtractOpenAiResponsesContent(JsonElement root)
     {
-        try
+        if (root.TryGetProperty("output_text", out var outputText) &&
+            outputText.ValueKind == JsonValueKind.String)
         {
-            var logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config", "Logs");
-            Directory.CreateDirectory(logDir);
-            File.WriteAllText(Path.Combine(logDir, $"batch-response-{DateTime.Now:HHmmss}.txt"), raw);
+            return outputText.GetString() ?? "";
         }
-        catch { }
+
+        if (!root.TryGetProperty("output", out var output) ||
+            output.ValueKind != JsonValueKind.Array)
+        {
+            throw new FormatException("Responses API 响应中缺少 output_text/output。");
+        }
+
+        var sb = new StringBuilder();
+        foreach (var item in output.EnumerateArray())
+        {
+            if (!item.TryGetProperty("content", out var content) ||
+                content.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var part in content.EnumerateArray())
+            {
+                if (part.TryGetProperty("text", out var text) &&
+                    text.ValueKind == JsonValueKind.String)
+                {
+                    sb.Append(text.GetString());
+                }
+            }
+        }
+
+        if (sb.Length == 0)
+        {
+            throw new FormatException("Responses API 响应中没有可读取的文本内容。");
+        }
+
+        return sb.ToString();
     }
 
     // ──── JSON parsing ────

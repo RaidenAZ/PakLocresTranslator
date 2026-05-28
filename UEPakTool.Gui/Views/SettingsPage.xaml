@@ -26,6 +26,7 @@
                         <TextBlock Text="API 格式" Margin="0,0,0,4" />
                         <ComboBox SelectedIndex="{Binding ApiFormatIndex, Mode=TwoWay}" Margin="0,0,0,12">
                             <ComboBoxItem Content="OpenAI 兼容 (/chat/completions)" />
+                            <ComboBoxItem Content="OpenAI Responses (/responses)" />
                             <ComboBoxItem Content="Anthropic 兼容 (/messages)" />
                         </ComboBox>
 
