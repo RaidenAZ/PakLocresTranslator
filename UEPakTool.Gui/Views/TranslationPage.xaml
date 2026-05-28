@@ -36,8 +36,8 @@
                         Icon="{ui:SymbolIcon ArrowDownload20}" Margin="0,0,4,0" ToolTip="导出 JSON (与 FModel 格式兼容)">
                     导出
                 </ui:Button>
-                <ui:Button Command="{Binding ImportJsonCommand}" Appearance="Secondary"
-                        Icon="{ui:SymbolIcon ArrowUpload20}" Margin="0,0,4,0" ToolTip="导入 JSON (FModel 导出格式)">
+                <ui:Button Command="{Binding ImportTranslationFileCommand}" Appearance="Secondary"
+                        Icon="{ui:SymbolIcon ArrowUpload20}" Margin="0,0,4,0" ToolTip="导入 JSON 或 locres 翻译文件">
                     导入
                 </ui:Button>
                 <ui:Button Command="{Binding SaveLocresFilesCommand}" Appearance="Secondary"
