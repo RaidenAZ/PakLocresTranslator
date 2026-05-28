@@ -3,7 +3,7 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  xmlns:vm="clr-namespace:UEPakTool.Gui.ViewModels"
-                 Title="TSW 本地化工具 v1.4"
+                 Title="TSW 本地化工具 v1.4.4"
                  Height="800"
                  Width="1280"
                  MinHeight="600"
@@ -23,7 +23,7 @@
         </Grid.RowDefinitions>
 
         <ui:TitleBar Grid.Row="0"
-                     Title="TSW 本地化工具 v1.4" />
+                     Title="TSW 本地化工具 v1.4.4" />
 
         <ui:NavigationView x:Name="NavView"
                            Grid.Row="1"

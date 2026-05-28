@@ -143,18 +143,30 @@ public partial class TranslationViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ImportJson()
+    private void ImportTranslationFile()
     {
         var dialog = new OpenFileDialog
         {
-            Title = "导入翻译表 (JSON)",
-            Filter = "JSON 文件 (*.json)|*.json"
+            Title = "导入翻译文件",
+            Filter = "支持的翻译文件 (*.json;*.locres)|*.json;*.locres|JSON 文件 (*.json)|*.json|locres 文件 (*.locres)|*.locres"
         };
         if (dialog.ShowDialog() != true) return;
 
-        int count = ImportJsonFile(dialog.FileName);
-        UpdateStats();
-        StatusText = $"已导入 {count} 条翻译";
+        try
+        {
+            int count = Path.GetExtension(dialog.FileName).ToLowerInvariant() switch
+            {
+                ".locres" => ImportLocresFile(dialog.FileName),
+                ".json" => ImportJsonFile(dialog.FileName),
+                _ => throw new NotSupportedException("不支持的翻译文件格式")
+            };
+            UpdateStats();
+            StatusText = $"已导入 {count} 条翻译";
+        }
+        catch (Exception ex)
+        {
+            ErrorHelper.Show("导入翻译文件失败", ex);
+        }
     }
 
     private int ImportJsonFile(string path)
@@ -200,6 +212,45 @@ public partial class TranslationViewModel : ObservableObject
                     Records.Add(record);
                     count++;
                 }
+            }
+        }
+
+        return count;
+    }
+
+    private int ImportLocresFile(string path)
+    {
+        var locres = LocResFile.Load(File.ReadAllBytes(path));
+        int count = 0;
+        bool hasRecords = Records.Count > 0;
+
+        foreach (var entry in locres.Entries)
+        {
+            if (hasRecords)
+            {
+                var record = Records.FirstOrDefault(r =>
+                    r.Namespace == entry.Namespace && r.Key == entry.Key)
+                    ?? Records.FirstOrDefault(r => r.Key == entry.Key);
+
+                if (record == null) continue;
+
+                record.Translated = entry.LocalizedString;
+                record.Source = TranslationSource.ManuallyEntered;
+                count++;
+            }
+            else
+            {
+                var record = new TranslationRecord
+                {
+                    Namespace = entry.Namespace,
+                    Key = entry.Key,
+                    Original = entry.LocalizedString,
+                    SourceStringHash = entry.SourceStringHash
+                };
+                record.SetInitialValue(entry.LocalizedString);
+                record.PropertyChanged += OnRecordChanged;
+                Records.Add(record);
+                count++;
             }
         }
 
