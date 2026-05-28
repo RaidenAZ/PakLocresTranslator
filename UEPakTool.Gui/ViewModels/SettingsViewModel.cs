@@ -22,7 +22,7 @@ public partial class SettingsViewModel : ObservableObject
     private string _modelName = "gpt-4o";
 
     [ObservableProperty]
-    private int _apiFormatIndex; // 0=OpenAI, 1=Anthropic
+    private int _apiFormatIndex; // 0=OpenAI Chat, 1=OpenAI Responses, 2=Anthropic
 
     [ObservableProperty]
     private bool _promptBeforeOverwrite;
@@ -87,7 +87,7 @@ public partial class SettingsViewModel : ObservableObject
         ApiUrl = config.ApiUrl;
         ApiKey = config.ApiKey;
         ModelName = config.ModelName;
-        ApiFormatIndex = config.Format == Core.Ai.ApiFormat.OpenAI ? 0 : 1;
+        ApiFormatIndex = FormatToIndex(config.Format);
         PromptBeforeOverwrite = config.PromptBeforeOverwrite;
         BatchSize = config.BatchSize > 0 ? config.BatchSize : 15;
         SystemPrompt = config.SystemPrompt ?? "";
@@ -108,11 +108,11 @@ public partial class SettingsViewModel : ObservableObject
             ApiUrl = ApiUrl,
             ApiKey = ApiKey,
             ModelName = ModelName,
-            Format = ApiFormatIndex == 0
-                ? Core.Ai.ApiFormat.OpenAI : Core.Ai.ApiFormat.Anthropic,
+            Format = IndexToFormat(ApiFormatIndex),
             PromptBeforeOverwrite = PromptBeforeOverwrite,
             BatchSize = BatchSize,
-            SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt
+            SystemPrompt = string.IsNullOrWhiteSpace(SystemPrompt) ? null : SystemPrompt,
+            OodleDllPath = OodleDllPath
         };
         _settings.SaveAiConfig(config);
 
@@ -133,7 +133,8 @@ public partial class SettingsViewModel : ObservableObject
         {
             HttpResponseMessage response;
 
-            if (ApiFormatIndex == 0)
+            var format = IndexToFormat(ApiFormatIndex);
+            if (format == Core.Ai.ApiFormat.OpenAI)
             {
                 var body = new
                 {
@@ -145,6 +146,19 @@ public partial class SettingsViewModel : ObservableObject
                 _http.DefaultRequestHeaders.Clear();
                 _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {ApiKey}");
                 response = await _http.PostAsync($"{ApiUrl.TrimEnd('/')}/chat/completions", content);
+            }
+            else if (format == Core.Ai.ApiFormat.OpenAIResponses)
+            {
+                var body = new
+                {
+                    model = ModelName,
+                    input = "Say OK",
+                    max_output_tokens = 16
+                };
+                var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+                _http.DefaultRequestHeaders.Clear();
+                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {ApiKey}");
+                response = await _http.PostAsync($"{ApiUrl.TrimEnd('/')}/responses", content);
             }
             else
             {
@@ -211,5 +225,21 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (entry != null) GlossaryEntries.Remove(entry);
     }
+
+    private static Core.Ai.ApiFormat IndexToFormat(int index) =>
+        index switch
+        {
+            1 => Core.Ai.ApiFormat.OpenAIResponses,
+            2 => Core.Ai.ApiFormat.Anthropic,
+            _ => Core.Ai.ApiFormat.OpenAI
+        };
+
+    private static int FormatToIndex(Core.Ai.ApiFormat format) =>
+        format switch
+        {
+            Core.Ai.ApiFormat.OpenAIResponses => 1,
+            Core.Ai.ApiFormat.Anthropic => 2,
+            _ => 0
+        };
 
 }
