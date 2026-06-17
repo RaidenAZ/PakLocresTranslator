@@ -125,21 +125,16 @@ public partial class TranslationViewModel : ObservableObject
         };
         if (dialog.ShowDialog() != true) return;
 
-        // 按 namespace 分组，与 FModel 导出格式兼容
-        var groups = Records.GroupBy(r => r.Namespace);
-        using var doc = new Utf8JsonWriter(File.Create(dialog.FileName), new JsonWriterOptions { Indented = true });
-        doc.WriteStartObject();
-        foreach (var g in groups)
+        try
         {
-            doc.WritePropertyName(g.Key);
-            doc.WriteStartObject();
-            foreach (var r in g)
-                doc.WriteString(r.Key, r.Translated);
-            doc.WriteEndObject();
+            File.WriteAllText(dialog.FileName, JsonExportService.BuildTranslationJson(Records));
+            StatusText = $"已导出 {Records.Count} 条到 {Path.GetFileName(dialog.FileName)}";
         }
-        doc.WriteEndObject();
-
-        StatusText = $"已导出 {Records.Count} 条到 {Path.GetFileName(dialog.FileName)}";
+        catch (Exception ex)
+        {
+            ErrorHelper.Show("导出 JSON 失败", ex);
+            StatusText = $"导出 JSON 失败: {ex.Message}";
+        }
     }
 
     [RelayCommand]

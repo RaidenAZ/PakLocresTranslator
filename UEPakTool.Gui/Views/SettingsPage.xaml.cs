@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using UEPakTool.Gui.Services;
 using UEPakTool.Gui.Models;
 using UEPakTool.Gui.ViewModels;
 
@@ -40,8 +41,7 @@ public partial class SettingsPage : UserControl
         var dialog = new SaveFileDialog { Title = "导出术语表", Filter = "JSON 文件 (*.json)|*.json" };
         if (dialog.ShowDialog() != true || DataContext is not SettingsViewModel vm) return;
 
-        var json = JsonSerializer.Serialize(vm.GlossaryEntries, new JsonSerializerOptions { WriteIndented = true });
-        System.IO.File.WriteAllText(dialog.FileName, json);
+        System.IO.File.WriteAllText(dialog.FileName, JsonExportService.BuildGlossaryJson(vm.GlossaryEntries));
     }
 
     private void Save_Click(object sender, System.Windows.RoutedEventArgs e)

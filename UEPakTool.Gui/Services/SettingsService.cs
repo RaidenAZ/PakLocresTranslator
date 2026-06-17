@@ -7,7 +7,6 @@ namespace UEPakTool.Gui.Services;
 public class SettingsService : ISettingsService
 {
     private readonly string _configDir;
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public SettingsService() : this(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Config"))
     {
@@ -33,7 +32,7 @@ public class SettingsService : ISettingsService
     {
         EnsureConfigDir();
         File.WriteAllText(Path.Combine(_configDir, "ai-config.json"),
-            JsonSerializer.Serialize(config, JsonOptions));
+            JsonExportService.BuildAiConfigJson(config));
     }
 
     public List<GlossaryEntry> LoadGlossary()
@@ -51,7 +50,7 @@ public class SettingsService : ISettingsService
     {
         EnsureConfigDir();
         File.WriteAllText(Path.Combine(_configDir, "glossary.json"),
-            JsonSerializer.Serialize(glossary, JsonOptions));
+            JsonExportService.BuildGlossaryJson(glossary));
     }
 
     private void EnsureConfigDir() => Directory.CreateDirectory(_configDir);
